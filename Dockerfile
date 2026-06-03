@@ -22,6 +22,13 @@ COPY package.json yarn.lock ./
 # Install all dependencies required for the build
 RUN yarn install --frozen-lockfile
 
+# logra is a Git dependency built by its `prepare` script. A clean install
+# normally builds it, but in some CI environments its dist/ (with the .d.ts
+# files) is not materialized, which makes the `yarn build` below fail with
+# "Cannot find module 'logra'". Build it explicitly with our own tsc so the
+# types are always present, regardless of whether `prepare` ran.
+RUN node_modules/.bin/tsc -p node_modules/logra/tsconfig.json
+
 # Copy source code and configuration files, then build
 COPY . .
 RUN yarn build

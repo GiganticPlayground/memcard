@@ -1,0 +1,238 @@
+openapi: 3.1.1
+info:
+  title: Memcard API
+  description: >-
+    Mobile state persistence backed by Amazon S3 with ETag-based optimistic
+    concurrency control.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Local server
+
+tags:
+  - name: Memcard
+    description: Player state read and write endpoints
+  - name: System
+    description: Service health endpoints
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      tags:
+        - System
+      operationId: getHealth
+      x-eov-operation-id: getHealth
+      x-eov-operation-handler: healthController
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+
+  /v1/memcard/me/state:
+    get:
+      summary: Fetch the authenticated player's state
+      description: >-
+        Returns the current state object and its ETag. Supply `If-None-Match`
+        with a previously received ETag for cache validation; a match yields
+        `304 Not Modified`. A player with no stored state receives an empty
+        state body and the sentinel ETag.
+      tags:
+        - Memcard
+      operationId: getMemcardState
+      x-eov-operation-id: getMemcardState
+      x-eov-operation-handler: memcardController
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: If-None-Match
+          in: header
+          required: false
+          description: ETag of the cached version held by the client.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current state returned
+          headers:
+            ETag:
+              description: Opaque version identifier of the returned state
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemcardStateResponse'
+        '304':
+          description: Client's cached state is current; no body returned
+          headers:
+            ETag:
+              schema:
+                type: string
+        '401':
+          description: Missing, expired, or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: S3 unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Save the authenticated player's state
+      description: >-
+        Writes the supplied state using a conditional write. The client must
+        send the ETag from its most recent fetch in `If-Match`; new players send
+        the sentinel ETag. A stale ETag yields `409 Conflict`.
+      tags:
+        - Memcard
+      operationId: putMemcardState
+      x-eov-operation-id: putMemcardState
+      x-eov-operation-handler: memcardController
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          description: ETag the client believes is current (or the sentinel for a first write).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemcardStateUpdate'
+      responses:
+        '200':
+          description: State saved
+          headers:
+            ETag:
+              description: Newly issued opaque version identifier
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemcardSaveResponse'
+        '400':
+          description: Malformed request body or missing required header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing, expired, or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: State was modified since the client's last fetch
+          headers:
+            ETag:
+              description: Current opaque version identifier the client should reconcile against
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateConflict'
+        '413':
+          description: Request body exceeds the configured size limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: S3 unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    HealthCheck:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+      properties:
+        status:
+          type: string
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+        service:
+          type: string
+          example: memcard
+    MemcardStateResponse:
+      type: object
+      required:
+        - state
+      properties:
+        lastModified:
+          type: string
+          format: date-time
+        state:
+          type: object
+          additionalProperties: true
+    MemcardStateUpdate:
+      type: object
+      required:
+        - state
+      additionalProperties: false
+      properties:
+        state:
+          type: object
+          additionalProperties: true
+    MemcardSaveResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          example: true
+    StateConflict:
+      type: object
+      required:
+        - errorCode
+        - currentEtag
+      properties:
+        errorCode:
+          type: string
+          example: STATE_CONFLICT
+        currentEtag:
+          type: string
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+        code:
+          type: string

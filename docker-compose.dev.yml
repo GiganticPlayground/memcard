@@ -1,0 +1,64 @@
+# Local dev stack: Memcard + Token Weaver (auth) on one network.
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.dev.yml down
+#
+# Token Weaver issues JWTs and publishes its JWKS; Memcard verifies them by
+# reaching Token Weaver over the compose network at http://token-weaver:3000.
+# Token Weaver runs from its published GHCR image (pulled, not built); Memcard is
+# built locally from this repo, so `--build` still applies to Memcard.
+#
+# Host ports: Token Weaver -> 3000, Memcard -> 3010. AWS creds / bucket come
+# from cloud-save-service/.env.
+services:
+  token-weaver:
+    # Published multi-arch image (built by the token-weaver repo's CI). No local
+    # build or sibling checkout needed — its strategies + RSA signing key are
+    # served from this repo's ./dev/token-weaver, mounted at /app/config.
+    # Generate the key once with `yarn dev:keys` (it is gitignored, not committed).
+    image: ghcr.io/giganticplayground/token-weaver:latest-main
+    container_name: tw-auth
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - TOKEN_WEAVER_PRIVATE_KEY_PATH=config/keys/private-key.pem
+    volumes:
+      - ./dev/token-weaver:/app/config:ro
+    ports:
+      - '3000:3000'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  memcard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: memcard
+    # AWS creds, region, bucket and MEMCARD_ENV come from .env...
+    env_file:
+      - path: .env
+        required: false
+    # ...but these override .env so the service talks to Token Weaver over the
+    # compose network and listens on the container's internal port.
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - JWKS_URI=http://token-weaver:3000/.well-known/jwks.json
+      - JWT_ISSUER=token-weaver
+    ports:
+      - '3010:3000'
+    depends_on:
+      token-weaver:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:3000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

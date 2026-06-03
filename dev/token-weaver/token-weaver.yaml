@@ -1,0 +1,54 @@
+# Token Weaver dev config — vendored into the Memcard repo so the dev stack
+# (docker-compose.dev.yml) is self-contained and needs no sibling checkout.
+#
+# This file is mounted read-only into the published Token Weaver image at
+# /app/config/token-weaver.yaml. It defines test strategies that issue RS256
+# JWTs Memcard verifies. The claims below become the Memcard identity:
+#   sub -> userId (the player), app -> app (the {app} key segment).
+#
+# The `secret` values here are NON-SENSITIVE demo credentials: a secret only
+# yields a usable token when signed by the RSA key in ./keys/, which is NOT
+# committed (generate it with `yarn dev:keys`). Do not reuse these in any
+# environment that is reachable by others.
+strategies:
+  - name: game-client
+    type: direct
+    credential_path: $.request.body.secret
+    credentials:
+      - secret: dev-secret
+        claims:
+          sub: player-001
+          app: my-game
+      - secret: secret-player-002
+        claims:
+          sub: player-002
+          app: my-game
+      - secret: secret-player-003
+        claims:
+          sub: player-003
+          app: my-game
+      - secret: secret-player-004
+        claims:
+          sub: player-004
+          app: my-game
+      - secret: secret-player-005
+        claims:
+          sub: player-005
+          app: my-game
+    jwt:
+      algorithm: RS256
+      issuer: token-weaver
+      ttl: 3600
+
+  - name: new-player
+    type: direct
+    credential_path: $.request.body.secret
+    credentials:
+      - secret: dev-secret
+        claims:
+          sub: demo-player
+          app: demo-app
+    jwt:
+      algorithm: RS256
+      issuer: token-weaver
+      ttl: 3600

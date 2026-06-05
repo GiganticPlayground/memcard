@@ -3276,6 +3276,23 @@ toidentifier@~1.0.1:
   resolved "https://registry.yarnpkg.com/toidentifier/-/toidentifier-1.0.1.tgz#3be34321a88a820ed1bd80dfaa33e479fbb8dd35"
   integrity sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==
 
+"token-weaver@github:GiganticPlayground/token-weaver#semver:^1.0.0":
+  version "1.0.3"
+  resolved "https://codeload.github.com/GiganticPlayground/token-weaver/tar.gz/bd1cc9968813374b0afc63cedc5d7d0f853b4a72"
+  dependencies:
+    cors "^2.8.5"
+    dotenv "^17.2.3"
+    express "^5.1.0"
+    express-openapi-validator "^5.6.0"
+    express-rate-limit "^8.5.0"
+    helmet "^8.1.0"
+    jose "^6.2.3"
+    js-yaml "^4.1.0"
+    logra "github:GiganticPlayground/logra#semver:^1.0.0"
+    swagger-ui-express "^5.0.1"
+    yaml "^2.8.1"
+    zod "^4.1.12"
+
 touch@^3.1.0:
   version "3.1.1"
   resolved "https://registry.yarnpkg.com/touch/-/touch-3.1.1.tgz#097a23d7b161476435e5c1344a95c0f75b4a5694"

@@ -96,8 +96,12 @@ Then set the **required** values in `.env`:
 | `AWS_REGION` | `us-east-1` | Region of your bucket |
 | `MEMCARD_S3_BUCKET` | `my-game-saves` | Bucket that holds state objects |
 | `MEMCARD_ENV` | `prod` | `{env}` segment of the S3 key |
-| `JWKS_URI` | `https://auth.example.com/.well-known/jwks.json` | Where Memcard fetches public keys to verify tokens |
+| `JWKS_URI` | `https://auth.example.com/.well-known/jwks.json` | Where Memcard fetches public keys to verify tokens (JWKS mode) |
 | `JWT_ISSUER` | `https://auth.example.com` | Expected `iss` claim |
+
+> **Verifying HS256 (shared-secret) tokens instead?** Set
+> `JWT_AUTH_MODE=jwt-hs256` and `JWT_SECRET=<your secret>` instead of `JWKS_URI`.
+> The default is `jwt-jwks` (RS256 via JWKS). See [Configuration](#configuration).
 
 AWS credentials are resolved through the **default AWS SDK credential chain**
 (environment variables, shared config, or an IAM role in deployment) — you do not
@@ -303,7 +307,9 @@ values.
 | `MEMCARD_S3_TIMEOUT_MS` | `5000` | Per-request S3 timeout (→ `503` on timeout) |
 | `MEMCARD_S3_ENDPOINT` | unset | Explicit S3 endpoint (e.g. LocalStack) |
 | `MEMCARD_S3_FORCE_PATH_STYLE` | `false` | Force path-style S3 addressing |
-| `JWKS_URI` | _required_ | Auth service JWKS endpoint used to verify tokens |
+| `JWT_AUTH_MODE` | `jwt-jwks` | Token verification mode: `jwt-jwks` (RS256 via JWKS) or `jwt-hs256` (HS256 via shared secret) |
+| `JWKS_URI` | _required if `jwt-jwks`_ | Auth service JWKS endpoint used to verify tokens |
+| `JWT_SECRET` | _required if `jwt-hs256`_ | Shared secret the issuer signs HS256 tokens with |
 | `JWT_ISSUER` | _required_ | Expected `iss` claim |
 | `JWT_AUDIENCE` | unset | Expected `aud` claim (when set) |
 | `JWT_APP_CLAIM` | `app` | Claim that supplies the `{app}` key segment |

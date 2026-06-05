@@ -1,51 +1,32 @@
-import type { NextFunction, Request, Response } from 'express';
-import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTVerifyOptions } from 'jose';
+import { createAuthMiddleware } from 'token-weaver/auth';
 
 import { config } from '../config/index';
 import type { AuthContext } from '../types/express';
-import { HttpError, logger } from '../utils/index';
+import { HttpError } from '../utils/index';
 
 /**
- * Remote JWKS resolver. `jose` caches the keys, refreshes them on a `kid`
- * miss, and applies a cooldown so a flood of unknown-key tokens cannot
- * hammer the auth service.
+ * JWT verification middleware.
+ *
+ * Delegates token verification to the shared, configurable middleware published
+ * by token-weaver (`token-weaver/auth`). The verification mode is selected by
+ * `JWT_AUTH_MODE`:
+ *  - `jwt-jwks`  — RS256 JWT validated against the remote JWKS at `JWKS_URI`.
+ *  - `jwt-hs256` — HS256 JWT validated against the shared `JWT_SECRET`.
+ *
+ * The shared middleware stays consumer-agnostic: it verifies the token and hands
+ * the decoded payload to `onVerified`, where we map the Memcard identity onto
+ * `req.auth`. Invalid/expired/missing tokens reject with `401` (the lib's
+ * `AuthError`, rendered by `errorHandlerMiddleware`) before any S3 access.
  */
-const jwks = createRemoteJWKSet(new URL(config.JWKS_URI));
-
-const verifyOptions: JWTVerifyOptions = {
+export const authMiddleware = createAuthMiddleware({
+  mode: config.JWT_AUTH_MODE,
   issuer: config.JWT_ISSUER,
-  algorithms: ['RS256'],
   ...(config.JWT_AUDIENCE ? { audience: config.JWT_AUDIENCE } : {}),
-};
-
-function extractBearerToken(req: Request): string {
-  const header = req.header('authorization');
-  if (!header) {
-    throw new HttpError(401, 'Missing Authorization header');
-  }
-
-  const [scheme, token] = header.split(/\s+/, 2);
-  if (scheme?.toLowerCase() !== 'bearer' || !token) {
-    throw new HttpError(401, 'Authorization header must be a Bearer token');
-  }
-
-  return token;
-}
-
-/**
- * Verifies the inbound JWT against the auth service JWKS and attaches the
- * resolved identity to `req.auth`. Rejects with 401 before any S3 access.
- */
-export async function authMiddleware(
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-): Promise<void> {
-  try {
-    const token = extractBearerToken(req);
-
-    const { payload } = await jwtVerify(token, jwks, verifyOptions);
-
+  ...(config.JWT_AUTH_MODE === 'jwt-jwks' && config.JWKS_URI ? { jwksUri: config.JWKS_URI } : {}),
+  ...(config.JWT_AUTH_MODE === 'jwt-hs256' && config.JWT_SECRET
+    ? { secret: config.JWT_SECRET }
+    : {}),
+  onVerified: (payload, req) => {
     const userId = payload.sub;
     if (typeof userId !== 'string' || userId.length === 0) {
       throw new HttpError(401, 'Token is missing the subject (sub) claim');
@@ -58,20 +39,5 @@ export async function authMiddleware(
 
     const auth: AuthContext = { userId, app: appClaim };
     req.auth = auth;
-
-    next();
-  } catch (error) {
-    if (error instanceof HttpError) {
-      next(error);
-      return;
-    }
-
-    if (error instanceof joseErrors.JOSEError) {
-      logger.warn('JWT verification failed', { code: error.code });
-      next(new HttpError(401, 'Invalid or expired token'));
-      return;
-    }
-
-    next(error);
-  }
-}
+  },
+});

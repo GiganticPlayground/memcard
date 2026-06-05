@@ -29,6 +29,13 @@ RUN yarn install --frozen-lockfile
 # types are always present, regardless of whether `prepare` ran.
 RUN node_modules/.bin/tsc -p node_modules/logra/tsconfig.json
 
+# token-weaver is also a Git dependency consumed as a library (`token-weaver/auth`).
+# Its `prepare` builds only the auth lib (tsconfig.lib.json), but yarn classic does
+# not reliably run a git-dep `prepare`, so build it explicitly here. The two-step
+# build mirrors the package's own `build:lib` (tsc + the .js ESM-extension fixup).
+RUN node_modules/.bin/tsc -p node_modules/token-weaver/tsconfig.lib.json \
+  && node node_modules/token-weaver/scripts/fix-dist-esm-imports.js node_modules/token-weaver/dist
+
 # Copy source code and configuration files, then build
 COPY . .
 RUN yarn build
@@ -45,6 +52,10 @@ RUN yarn install --frozen-lockfile --production
 # install does not rebuild it, so graft the version already built in the
 # builder stage (which ran a full install).
 COPY --from=builder /app/node_modules/logra ./node_modules/logra
+
+# token-weaver/auth is imported at runtime; graft the lib build (dist/) from the
+# builder stage for the same reason as logra (--production won't build it).
+COPY --from=builder /app/node_modules/token-weaver ./node_modules/token-weaver
 
 # Copy the built application and required runtime assets
 COPY --from=builder /app/dist ./dist

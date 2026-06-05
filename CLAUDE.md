@@ -72,4 +72,5 @@ Throw `HttpError(status, message, { code })`, `StateConflictError(currentEtag)` 
 ## Gotchas
 
 - **`logra` is a GitHub dependency that builds via its `prepare` script.** A clean `yarn install` builds it; an incremental `yarn add` may leave `node_modules/logra/dist` empty, causing `Cannot find module 'logra/dist/index.js'`. Fix: `node_modules/.bin/tsc -p node_modules/logra/tsconfig.json` (or reinstall cleanly).
+- **`token-weaver` (the `token-weaver/auth` middleware) is also a GitHub dependency built by `prepare`** (its `build:lib` → `tsconfig.lib.json`, auth lib only). Same gotcha as logra: yarn classic does not reliably run a git-dep `prepare`, so its `dist/` may be missing after install. Fix: `node_modules/.bin/tsc -p node_modules/token-weaver/tsconfig.lib.json && node node_modules/token-weaver/scripts/fix-dist-esm-imports.js node_modules/token-weaver/dist`. The `Dockerfile` builds both logra and token-weaver explicitly for this reason.
 - `tsconfig` has `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` on — index access is `T | undefined`, and optional props that may be explicitly `undefined` must be typed `?: T | undefined`.

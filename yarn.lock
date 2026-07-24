@@ -1057,6 +1057,20 @@ ajv@^8.0.0, ajv@^8.17.1:
     json-schema-traverse "^1.0.0"
     require-from-string "^2.0.2"
 
+"amqp-cacoon@github:GiganticPlayground/amqp-cacoon#semver:^3.6.0":
+  version "3.6.1"
+  resolved "https://codeload.github.com/GiganticPlayground/amqp-cacoon/tar.gz/8be1f332adc9e41db49812657f4a79b12fb521c4"
+  dependencies:
+    amqp-connection-manager "~4.1.14"
+    lodash "^4.18.1"
+
+amqp-connection-manager@~4.1.14:
+  version "4.1.15"
+  resolved "https://registry.yarnpkg.com/amqp-connection-manager/-/amqp-connection-manager-4.1.15.tgz#af1af653961c13674628d0b075eef7b95a209fe4"
+  integrity sha512-YGi8MuO2K4u0qC4b1qAKVIK8CdBJF+PpEZpHKxmrL3x61pU1sAb2SHzQl7ypoqr6oECIfVqtG9DGdOZxaUq1Wg==
+  dependencies:
+    promise-breaker "^6.0.0"
+
 ansi-styles@^4.1.0:
   version "4.3.0"
   resolved "https://registry.yarnpkg.com/ansi-styles/-/ansi-styles-4.3.0.tgz#edd803628ae71c04c85ae7a0906edad34b648937"
@@ -2515,6 +2529,11 @@ lodash.merge@^4.6.2:
   resolved "https://registry.yarnpkg.com/lodash.merge/-/lodash.merge-4.6.2.tgz#558aa53b43b661e1925a0afdfa36a9a1085fe57a"
   integrity sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==
 
+lodash@^4.18.1:
+  version "4.18.1"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.18.1.tgz#ff2b66c1f6326d59513de2407bf881439812771c"
+  integrity sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==
+
 "logra@github:GiganticPlayground/logra#semver:^1.0.0":
   version "1.0.0"
   resolved "https://codeload.github.com/GiganticPlayground/logra/tar.gz/c63650a79fe27f1b49c3d5ed89518fca8be35bdd"
@@ -2839,6 +2858,11 @@ prettier@^3.6.2:
   resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.8.3.tgz#560f2de55bf01b4c0503bc629d5df99b9a1d09b0"
   integrity sha512-7igPTM53cGHMW8xWuVTydi2KO233VFiTNyF5hLJqpilHfmn8C8gPf+PS7dUT64YcXFbiMGZxS9pCSxL/Dxm/Jw==
 
+promise-breaker@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/promise-breaker/-/promise-breaker-6.0.0.tgz#107d2b70f161236abdb4ac5a736c7eb8df489d0f"
+  integrity sha512-BthzO9yTPswGf7etOBiHCVuugs2N01/Q/94dIPls48z2zCmrnDptUUZzfIb+41xq0MnYZ/BzmOd6ikDR4ibNZA==
+
 proxy-addr@^2.0.7:
   version "2.0.7"
   resolved "https://registry.yarnpkg.com/proxy-addr/-/proxy-addr-2.0.7.tgz#f19fe69ceab311eeb94b42e70e8c2070f9ba1025"
@@ -2920,6 +2944,13 @@ regexp.prototype.flags@^1.5.4:
     get-proto "^1.0.1"
     gopd "^1.2.0"
     set-function-name "^2.0.2"
+
+"reqcast@github:GiganticPlayground/reqcast#semver:^1.2.0":
+  version "1.2.0"
+  resolved "https://codeload.github.com/GiganticPlayground/reqcast/tar.gz/c75261c9bd0501e05501ab29b45a147661946be2"
+  dependencies:
+    amqp-cacoon "github:GiganticPlayground/amqp-cacoon#semver:^3.6.0"
+    zod "^4.1.12"
 
 require-from-string@^2.0.2:
   version "2.0.2"

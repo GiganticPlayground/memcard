@@ -1,0 +1,31 @@
+{
+  "enabled": true,
+  "sampleRate": 1,
+  "capture": {
+    "requestBody": false,
+    "responseBody": true,
+    "maxResponseBodyBytes": 8192
+  },
+  "filters": { "includePaths": ["/v1/memcard/**"], "excludePaths": ["/health", "/api-docs/**"] },
+  "format": {
+    "fields": {
+      "ts": "timestamp",
+      "requestId": "requestId",
+      "durationMs": "durationMs",
+      "request": { "method": "request.method", "path": "request.path", "ip": "request.ip" },
+      "response": { "status": "response.statusCode" }
+    },
+    "byStatus": {
+      "400-599": {
+        "fields": {
+          "ts": "timestamp",
+          "requestId": "requestId",
+          "durationMs": "durationMs",
+          "request": { "method": "request.method", "path": "request.path", "ip": "request.ip" },
+          "response": { "status": "response.statusCode", "error": "response.body" }
+        }
+      }
+    }
+  },
+  "sinks": [{ "type": "log", "level": "info", "message": "request analytics" }]
+}

@@ -15,7 +15,7 @@ import {
   errorHandlerMiddleware,
   requestContextMiddleware,
 } from './middlewares/index';
-import { logger } from './utils/index';
+import { buildAnalytics, logger } from './utils/index';
 import { setupShutdown } from './utils/shutdown';
 
 // Load OpenAPI specification
@@ -39,6 +39,13 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: config.MEMCARD_MAX_BODY_BYTES }));
 app.use(express.urlencoded({ extended: true }));
 app.use(requestContextMiddleware);
+
+// Request/response analytics — opt-in, enabled only when a reqcast config is present.
+const analytics = buildAnalytics();
+if (analytics?.enabled) {
+  app.use(analytics.middleware);
+  logger.info('request analytics enabled');
+}
 
 if (config.API_DOCS_ENABLED) {
   app.use(
@@ -66,4 +73,8 @@ const server = app.listen(config.PORT, () => {
   logger.info(`Server is running on port ${config.PORT}`);
 });
 
-setupShutdown(server, config.SHUTDOWN_TIMEOUT_MS);
+// In-flight requests drain first so their analytics records get dispatched,
+// then the sinks are flushed/closed.
+setupShutdown(server, config.SHUTDOWN_TIMEOUT_MS, {
+  onDrained: analytics ? () => analytics.close() : undefined,
+});

@@ -36,6 +36,14 @@ RUN node_modules/.bin/tsc -p node_modules/logra/tsconfig.json
 RUN node_modules/.bin/tsc -p node_modules/token-weaver/tsconfig.lib.json \
   && node node_modules/token-weaver/scripts/fix-dist-esm-imports.js node_modules/token-weaver/dist
 
+# reqcast (request analytics) is a Git dependency built by `prepare` too. Its own
+# tsc run reports one error — its optional `amqp` sink imports amqp-cacoon, whose
+# types need an unbuilt git dep plus the amqplib peer we do not install (Memcard
+# uses the log/file sinks). tsc still emits every module, and the amqp import is
+# lazy at runtime, so tolerate the non-zero exit and hard-verify the artifact.
+RUN node_modules/.bin/tsc -p node_modules/reqcast/tsconfig.json \
+  || test -f node_modules/reqcast/dist/index.js
+
 # Copy source code and configuration files, then build
 COPY . .
 RUN yarn build
@@ -56,6 +64,10 @@ COPY --from=builder /app/node_modules/logra ./node_modules/logra
 # token-weaver/auth is imported at runtime; graft the lib build (dist/) from the
 # builder stage for the same reason as logra (--production won't build it).
 COPY --from=builder /app/node_modules/token-weaver ./node_modules/token-weaver
+
+# reqcast is imported at runtime when analytics are enabled; graft its build for
+# the same reason as logra and token-weaver.
+COPY --from=builder /app/node_modules/reqcast ./node_modules/reqcast
 
 # Copy the built application and required runtime assets
 COPY --from=builder /app/dist ./dist

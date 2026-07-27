@@ -119,6 +119,10 @@ export const envSchema = z
     JWT_ISSUER: z.string().min(1),
     JWT_AUDIENCE: z.string().min(1).optional(),
     JWT_APP_CLAIM: z.string().min(1).optional().default('app'),
+    // --- Request analytics (reqcast) ---
+    // Path to a reqcast config file. Unset falls back to ./reqcast.config.json
+    // when that file exists; otherwise analytics stay disabled.
+    REQCAST_CONFIG: z.string().optional(),
     SHUTDOWN_TIMEOUT_MS: z
       .string()
       .transform((val) => parseInt(val, 10))

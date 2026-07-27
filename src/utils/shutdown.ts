@@ -2,7 +2,16 @@ import type { Server } from 'http';
 
 import { logger } from './logger';
 
-export function setupShutdown(server: Server, timeoutMs: number): void {
+export interface ShutdownOptions {
+  /** Ran after in-flight requests drain, before exit — e.g. flushing analytics sinks. */
+  onDrained?: (() => Promise<void>) | undefined;
+}
+
+export function setupShutdown(
+  server: Server,
+  timeoutMs: number,
+  options: ShutdownOptions = {},
+): void {
   let shuttingDown = false;
 
   const shutdown = async (signal: string) => {
@@ -22,6 +31,14 @@ export function setupShutdown(server: Server, timeoutMs: number): void {
     logger.info('Closing HTTP server — stopping new connections');
     await new Promise<void>((resolve) => server.close(() => resolve()));
     logger.info('HTTP server closed');
+
+    if (options.onDrained) {
+      try {
+        await options.onDrained();
+      } catch (err) {
+        logger.error('Shutdown hook failed', { err });
+      }
+    }
 
     clearTimeout(forceExit);
     logger.info('Shutdown complete');

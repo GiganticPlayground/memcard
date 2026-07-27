@@ -119,6 +119,16 @@ export const envSchema = z
     JWT_ISSUER: z.string().min(1),
     JWT_AUDIENCE: z.string().min(1).optional(),
     JWT_APP_CLAIM: z.string().min(1).optional().default('app'),
+    // --- Per-path authorization (allow/deny lists carried in the token) ---
+    // The issuer (Token Weaver) puts allowed/denied path patterns in these
+    // claims; this service only names which claims to read. Enforcement is
+    // opt-in per token: a token that omits the claim is unaffected.
+    JWT_WHITELIST_CLAIM: z.string().min(1).optional().default('whitelist'),
+    JWT_BLACKLIST_CLAIM: z.string().min(1).optional().default('blacklist'),
+    // Optional mount prefix stripped from the request path before matching the
+    // whitelist/blacklist patterns. Leave unset to match the absolute path
+    // (e.g. /v1/memcard/...), which keeps patterns service-specific.
+    JWT_PATH_PREFIX: z.string().min(1).optional(),
     // --- Request analytics (reqcast) ---
     // Path to a reqcast config file. Unset falls back to ./reqcast.config.json
     // when that file exists; otherwise analytics stay disabled.

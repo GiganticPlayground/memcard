@@ -1,8 +1,22 @@
-import { createAuthMiddleware } from 'token-weaver/auth';
+import { createAuthMiddleware, type AuthPaths } from 'token-weaver/auth';
 
 import { config } from '../config/index';
 import type { AuthContext } from '../types/express';
 import { HttpError } from '../utils/index';
+
+/**
+ * Per-path allow/deny configuration. The patterns themselves are carried by the
+ * token (in the claims named here); this only tells the middleware which claims
+ * to read and how to normalize the request path. A token that omits both claims
+ * is authorized purely by verification (no path restriction), preserving the
+ * prior behavior. Enforcement is matched against `req.baseUrl + req.path`
+ * (i.e. the absolute `/v1/memcard/...` path unless `JWT_PATH_PREFIX` is set).
+ */
+const authPaths: AuthPaths = {
+  whitelistClaim: config.JWT_WHITELIST_CLAIM,
+  blacklistClaim: config.JWT_BLACKLIST_CLAIM,
+  ...(config.JWT_PATH_PREFIX ? { pathPrefix: config.JWT_PATH_PREFIX } : {}),
+};
 
 /**
  * JWT verification middleware.
@@ -26,6 +40,9 @@ export const authMiddleware = createAuthMiddleware({
   ...(config.JWT_AUTH_MODE === 'jwt-hs256' && config.JWT_SECRET
     ? { secret: config.JWT_SECRET }
     : {}),
+  // Enforce the token's whitelist/blacklist path claims (403 on a denied path)
+  // before onVerified maps the identity. Only active when the token carries them.
+  paths: authPaths,
   onVerified: (payload, req) => {
     const userId = payload.sub;
     if (typeof userId !== 'string' || userId.length === 0) {

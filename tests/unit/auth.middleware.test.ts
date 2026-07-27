@@ -8,6 +8,11 @@ import { SignJWT } from 'jose';
  * Auth middleware test — exercises the HS256 (`jwt-hs256`) verification path
  * end to end against the shared `token-weaver/auth` middleware.
  *
+ * This covers the **env-derived** single strategy, i.e. the setup with no auth
+ * config file, so it assumes `config/memcard.yaml` does not exist in the working
+ * tree (nothing commits one; the example lives at `examples/memcard.yaml`).
+ * Multi-strategy behavior is covered in `auth.multi-strategy.test.ts`.
+ *
  * Env vars are set *before* the middleware (and therefore the config singleton)
  * is imported, so we use a dynamic import below. `node --test` isolates each
  * test file in its own process, so this does not affect other suites.

@@ -1,0 +1,5 @@
+# Invalid at startup: the referenced env var is not set.
+auth:
+  - type: hs256
+    issuer: https://players.test
+    secret: ${env:TEST_SECRET_THAT_IS_NEVER_SET}

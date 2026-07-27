@@ -48,7 +48,11 @@ After editing `api/openapi.yaml`, run `yarn gen-types`.
 
 **Routing is OpenAPI-driven, not manually registered.** `express-openapi-validator` validates each request against `api/openapi.yaml` and dispatches to a controller export. Binding is by spec extensions: `x-eov-operation-handler` names the file in `src/controllers/`, `x-eov-operation-id` names the exported function. There is no router file — to add an endpoint, add it to the spec and create the matching controller export. Because dispatch is by method **and** path, `GET` and `PUT` on the same path are separate operations (no manual method routing needed).
 
-**Auth before S3.** `authMiddleware` (`src/middlewares/auth.middleware.ts`) verifies the bearer JWT against a remote JWKS (`jose` `createRemoteJWKSet`, RS256), then attaches `req.auth = { userId, app }` (typed via `src/types/express.d.ts`). `userId` is the JWT `sub`; `app` is the `JWT_APP_CLAIM` claim. Invalid/expired/missing tokens → `401` before any S3 call.
+**Auth before S3.** `authMiddleware` (`src/middlewares/auth.middleware.ts`) delegates verification to `token-weaver/auth` and attaches `req.auth = { userId, app }` plus `req.authStrategy` (typed via `src/types/express.d.ts`). `userId` is the JWT `sub`; `app` is the strategy's app claim (`JWT_APP_CLAIM` by default). Invalid/expired/missing tokens → `401` before any S3 call.
+
+**Auth strategies come from config, not code.** `src/config/auth.config.ts` parses the `auth:` section of a deployment config file (`MEMCARD_CONFIG_PATH`, else `config/memcard.yaml` when present) and compiles it into `AuthStrategyOptions[]`; with no file it builds one strategy from the `JWT_*` env vars — the original behavior. Several strategies can be active at once (`jwks`, `hs256`, `static`), tried in order, first accept wins, `403` preferred over `401` when all reject. `${env:VAR}` placeholders keep secrets out of the file and fail the boot when unset. Two invariants the compiler enforces: a `static` strategy must set `admin: true` (it has no claims, so it cannot name a player), and JWT strategies need distinct issuers (a verified payload is traced back to its strategy by `iss`).
+
+**Admin routes.** `/v1/memcard/admin/{app}/{userId}/state` takes the target from the URL rather than the token, so identity-less credentials can act on a named player. Only strategies marked `admin: true` reach it — enforced in `onVerified` and re-checked in the controller, deliberately *not* through the strategy's `paths` block, since an inline path list would override the token's own whitelist/blacklist claims.
 
 **Service layering:**
 - `MemcardService` (`src/services/memcard.service.ts`) — builds the S3 key `${MEMCARD_KEY_PREFIX}/${MEMCARD_ENV}/${app}/${userId}/state.json`, wraps the client `state` in the stored envelope (`schemaVersion`, `lastModifiedAt`), enforces the byte-size limit (`413`), and assembles the response envelope.
@@ -61,7 +65,7 @@ After editing `api/openapi.yaml`, run `yarn gen-types`.
 
 ## Configuration
 
-Environment is validated by a Zod schema (`src/config/env.validation.ts`) at module import via `config = validateEnv()` — the app **fails fast on startup** if vars are missing/invalid. Import the validated, typed config from `src/config/index`. Required: `AWS_REGION`, `MEMCARD_S3_BUCKET`, `MEMCARD_ENV`, `JWKS_URI`, `JWT_ISSUER`. See `README.md` / `.env.example` for the full set. There is no YAML config file — configuration is env-only. AWS credentials come from the default SDK credential chain (IAM role).
+Environment is validated by a Zod schema (`src/config/env.validation.ts`) at module import via `config = validateEnv()` — the app **fails fast on startup** if vars are missing/invalid. Import the validated, typed config from `src/config/index`. Required: `AWS_REGION`, `MEMCARD_S3_BUCKET`, `MEMCARD_ENV`, `JWKS_URI`, `JWT_ISSUER`. See `README.md` / `.env.example` for the full set. AWS credentials come from the default SDK credential chain (IAM role). Two subsystems read a file instead of env vars — auth strategies (`MEMCARD_CONFIG_PATH`, see above) and request analytics (`REQCAST_CONFIG`) — but both are optional and take their secrets from the environment.
 
 ## Error handling
 
@@ -69,7 +73,7 @@ Throw `HttpError(status, message, { code })`, `StateConflictError(currentEtag)` 
 
 ## Tests
 
-`node:test` with `@aws-sdk/client-s3` mocked via `aws-sdk-client-mock` (S3 stream bodies built with `@smithy/util-stream`). `tests/setup-env.ts` is imported **first** in each test to populate required env vars before the config module validates them at import time. Coverage focuses on `S3StateStore` (200/304/sentinel/timeout/conflict/sentinel-write) and `MemcardService` (key building, envelope wrapping, size limit).
+`node:test` with `@aws-sdk/client-s3` mocked via `aws-sdk-client-mock` (S3 stream bodies built with `@smithy/util-stream`). `tests/setup-env.ts` is imported **first** in each test to populate required env vars before the config module validates them at import time. Coverage focuses on `S3StateStore` (200/304/sentinel/timeout/conflict/sentinel-write), `MemcardService` (key building, envelope wrapping, size limit), and auth (env-derived single strategy, config-file compilation, multi-strategy verification). Auth tests set env vars inline and `await import()` the module under test, since the config singleton evaluates at import; deployment config files under `tests/fixtures/` are pointed at via `MEMCARD_CONFIG_PATH`.
 
 ## Gotchas
 

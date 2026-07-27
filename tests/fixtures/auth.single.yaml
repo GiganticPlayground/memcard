@@ -1,0 +1,5 @@
+# `auth` also accepts one strategy directly, without the list wrapper.
+auth:
+  type: hs256
+  issuer: https://players.test
+  secret: ${env:TEST_PLAYER_SECRET}

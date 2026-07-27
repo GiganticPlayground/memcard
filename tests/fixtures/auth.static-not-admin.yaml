@@ -1,0 +1,4 @@
+# Invalid: a static token has no claims, so it can only serve the admin routes.
+auth:
+  - type: static
+    token: ${env:TEST_STATIC_TOKEN}

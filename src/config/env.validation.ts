@@ -129,6 +129,12 @@ export const envSchema = z
     // whitelist/blacklist patterns. Leave unset to match the absolute path
     // (e.g. /v1/memcard/...), which keeps patterns service-specific.
     JWT_PATH_PREFIX: z.string().min(1).optional(),
+    // --- Deployment config file (auth strategies) ---
+    // Path to the YAML/JSON config file carrying the `auth:` section. Unset falls
+    // back to ./config/memcard.yaml when that file exists; with neither, auth is
+    // built from the JWT_* vars above as a single strategy (the prior behavior).
+    // Setting this to a path that does not exist is an error, not a fallback.
+    MEMCARD_CONFIG_PATH: z.string().min(1).optional(),
     // --- Request analytics (reqcast) ---
     // Path to a reqcast config file. Unset falls back to ./reqcast.config.json
     // when that file exists; otherwise analytics stay disabled.

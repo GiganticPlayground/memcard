@@ -26,6 +26,8 @@ conflict detection, and auth verification for you.
 - [API reference](#api-reference)
 - [Local development stack (with auth)](#local-development-stack-with-auth)
 - [Configuration](#configuration)
+- [Authentication](#authentication)
+- [Request analytics](#request-analytics)
 - [Development](#development)
 - [Project layout](#project-layout)
 - [Operational notes](#operational-notes)
@@ -163,6 +165,8 @@ dispatched through `express-openapi-validator` — there is no manual router.
 | --- | --- |
 | `GET /v1/memcard/me/state` | Fetch the authenticated player's state |
 | `PUT /v1/memcard/me/state` | Save the authenticated player's state |
+| `GET /v1/memcard/admin/{app}/{userId}/state` | Fetch any player's state _(admin credentials only)_ |
+| `PUT /v1/memcard/admin/{app}/{userId}/state` | Save any player's state _(admin credentials only)_ |
 | `GET /health` | Liveness check |
 | `GET /api-docs` | Swagger UI _(disabled when `API_DOCS_ENABLED=false`)_ |
 
@@ -201,6 +205,22 @@ Content-Type: application/json
 `If-Match` is **required**. A new player sends the sentinel ETag (`"0"`), which
 Memcard translates into a create-only `If-None-Match: *` write. On a `409`, re-fetch
 with `GET` before surfacing a conflict to the user.
+
+### `GET|PUT /v1/memcard/admin/{app}/{userId}/state`
+
+Same semantics as the two routes above — same headers, same status codes — except
+that the target player comes from the URL instead of the token. This is what lets a
+service that is not a player (a support tool, a migration job, a static token that
+carries no identity at all) read and write state.
+
+```
+GET /v1/memcard/admin/my-game/player-001/state
+Authorization: Bearer <admin credential>
+```
+
+Only credentials whose strategy is marked `admin: true` in the config file reach
+these routes; every other caller gets a **403**, including a valid player token.
+There is no way to enable them from the environment alone — see below.
 
 ---
 
@@ -282,9 +302,11 @@ A ready-made Postman collection for this flow lives in [postman/](postman/).
 
 ## Configuration
 
-Configuration is **environment-only** and validated by a Zod schema at startup
+Configuration is environment-driven and validated by a Zod schema at startup
 (`src/config/env.validation.ts`); the app refuses to boot on missing or invalid
-values.
+values. Two things are big enough to live in a file instead — the auth strategies
+(`MEMCARD_CONFIG_PATH`, below) and request analytics (`REQCAST_CONFIG`) — and both
+still take their secrets from the environment.
 
 | Variable | Default | Used for |
 | --- | --- | --- |
@@ -313,9 +335,74 @@ values.
 | `JWT_ISSUER` | _required_ | Expected `iss` claim |
 | `JWT_AUDIENCE` | unset | Expected `aud` claim (when set) |
 | `JWT_APP_CLAIM` | `app` | Claim that supplies the `{app}` key segment |
+| `JWT_WHITELIST_CLAIM` | `whitelist` | Claim carrying allowed path patterns |
+| `JWT_BLACKLIST_CLAIM` | `blacklist` | Claim carrying denied path patterns (wins over the whitelist) |
+| `JWT_PATH_PREFIX` | unset | Mount prefix stripped from the path before matching those patterns |
+| `MEMCARD_CONFIG_PATH` | unset | Path to the auth config file; falls back to `./config/memcard.yaml` when present |
 | `API_DOCS_ENABLED` | `true` | Mounts Swagger UI at `/api-docs` |
 | `REQCAST_CONFIG` | unset | Path to a reqcast analytics config; enables request analytics |
 | `SHUTDOWN_TIMEOUT_MS` | `30000` | Max wait for in-flight requests on SIGTERM/SIGINT |
+
+---
+
+## Authentication
+
+Memcard verifies tokens; it never issues them. Verification is delegated to the
+shared [`token-weaver/auth`](https://github.com/GiganticPlayground/token-weaver)
+middleware, and Memcard supplies the list of credentials it accepts.
+
+**With no config file**, that list is one entry built from the `JWT_*` vars above —
+the setup Memcard has always had. Nothing else is needed for the common case of
+"players hold a JWT from our auth service".
+
+**A config file** is how a deployment accepts more than one kind of caller at once.
+Copy [`examples/memcard.yaml`](examples/memcard.yaml), point `MEMCARD_CONFIG_PATH`
+at it (or drop it at `config/memcard.yaml`), and list the strategies:
+
+```yaml
+auth:
+  - type: jwks # mobile players
+    issuer: ${env:JWT_ISSUER}
+    jwks_url: ${env:JWKS_URI}
+    paths:
+      whitelistClaim: whitelist
+      blacklistClaim: blacklist
+
+  - type: static # an internal service that cannot mint JWTs
+    token: ${env:MEMCARD_STATIC_TOKEN}
+    admin: true
+```
+
+Strategies are tried **in the order listed** and the first that accepts the request
+wins. If all of them reject it, the most informative failure is returned — a `403`
+(valid credential, not allowed here) in preference to a `401` (bad credential).
+
+Types are `jwks` (RS256 against a JWKS endpoint), `hs256` (shared secret), and
+`static` (a fixed bearer string, no claims at all). Every entry also takes:
+
+| Field | Meaning |
+| --- | --- |
+| `admin` | Whether this credential may use the `/v1/memcard/admin/**` routes. Defaults to `false` |
+| `paths` | Path allow/deny rules — inline `whitelist`/`blacklist`, or `whitelistClaim`/`blacklistClaim` to read them from the token |
+| `requirements` | Claim checks applied after verification, e.g. `{ type: scope, value: memcard:admin }` _(JWT types only)_ |
+| `appClaim` | Claim supplying the `{app}` key segment, overriding `JWT_APP_CLAIM` for this strategy _(JWT types only)_ |
+
+Four things are worth knowing before writing one:
+
+- **Secrets stay in the environment.** `${env:VAR}` is resolved at startup and an
+  unset variable stops the boot, so the file is safe to commit next to a deployment.
+- **An inline list replaces the matching claim.** Setting `whitelist` means
+  `whitelistClaim` is ignored for that strategy — inline rules are the deployment's,
+  claim rules are the token's, and one strategy cannot use both on the same side.
+- **A `static` strategy must set `admin: true`.** It carries no claims, so it can
+  never name a player; on the player routes it would be authenticating a caller
+  Memcard cannot identify. The compiler rejects the combination outright.
+- **Each JWT strategy needs a distinct `issuer`.** A verified token is traced back to
+  its strategy by `iss` to resolve the right app claim, so duplicates are rejected.
+
+The admin gate is enforced in the middleware, not through `paths` — a deployment
+cannot widen it by writing its own patterns, and a player token never reaches those
+routes no matter what its claims say.
 
 ---
 
@@ -375,10 +462,11 @@ controller export (binding is by the `x-eov-operation-handler` /
 
 ## Project layout
 
-- [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — JWT verification via remote JWKS
+- [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — token verification, identity mapping, admin gate
+- [src/config/auth.config.ts](src/config/auth.config.ts) — auth config file schema and strategy compiler
 - [src/services/memcard.service.ts](src/services/memcard.service.ts) — domain logic, key construction, size enforcement
 - [src/services/s3.service.ts](src/services/s3.service.ts) — conditional S3 read/write and ETag mapping
-- [src/controllers/memcardController.ts](src/controllers/memcardController.ts) — GET/PUT handlers
+- [src/controllers/memcardController.ts](src/controllers/memcardController.ts) — GET/PUT handlers, player and admin
 - [src/config/env.validation.ts](src/config/env.validation.ts) — environment schema (fail-fast at startup)
 - [api/openapi.yaml](api/openapi.yaml) — API contract (routes, request/response types)
 
@@ -387,6 +475,9 @@ controller export (binding is by the `x-eov-operation-handler` /
 ## Operational notes
 
 - Credential failures and invalid/expired tokens return `401` **before** any S3 access.
+- The auth config file is a per-deployment artifact and is not baked into the image —
+  mount it and set `MEMCARD_CONFIG_PATH`. A path that does not resolve stops the boot
+  rather than silently falling back to the env-derived strategy.
 - Upstream S3 timeouts/unavailability return `503`.
 - Out of scope (handle with your IaC): bucket provisioning, object versioning +
   lifecycle, IAM least-privilege, encryption at rest.

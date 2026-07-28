@@ -1,0 +1,37 @@
+# PayloadStash with one upstream bug patched.
+#
+# THE BUG (payloadstash 1.0.2, config_utility.py):
+#
+#     if path.startswith("headers."):
+#         return headers.get(path[len("headers."):].lower())
+#
+# It lowercases the name you asked for but never normalizes the response header
+# dict, which is a plain dict keyed with whatever casing the server sent. So
+# `headers.<name>` resolves to None unless the server happens to emit that header
+# in all-lowercase — and the formal spec's instruction that "<name> must be
+# lowercase" is exactly what makes it fail.
+#
+# WHY IT MATTERS HERE: Memcard's entire concurrency model is carried in the ETag
+# response header, which Express sends as `ETag`. Without this patch every
+# capture and assertion on it silently resolves to None — and `notEquals`
+# assertions against None PASS, so the suite reports green while testing nothing.
+#
+# The alternative was to make Memcard emit a lowercase `etag` to suit the test
+# tool. Header names are case-insensitive per RFC 9110 so it would have worked,
+# but bending a service's public surface around a private tool's defect is the
+# wrong trade. Patch the tool.
+#
+# Remove this file and point PS_IMAGE back at the upstream image once the fix
+# lands upstream. The assert makes that safe: if the line is gone or changed, the
+# build fails loudly instead of producing an image that silently patches nothing.
+FROM ghcr.io/ericwastaken/payloadstash:main
+
+RUN python -c "\
+import pathlib; \
+p = pathlib.Path('/usr/local/lib/python3.11/site-packages/payload_stash/config_utility.py'); \
+s = p.read_text(); \
+old = 'return headers.get(path[len(\"headers.\"):].lower())'; \
+new = 'return {str(k).lower(): v for k, v in (headers or {}).items()}.get(path[len(\"headers.\"):].lower())'; \
+assert old in s, 'patch target not found — upstream changed, re-check Dockerfile.payloadstash'; \
+p.write_text(s.replace(old, new)); \
+print('patched: case-insensitive response header lookup')"

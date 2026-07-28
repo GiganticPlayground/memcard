@@ -52,3 +52,32 @@ strategies:
       algorithm: RS256
       issuer: token-weaver
       ttl: 3600
+
+  # Players whose tokens carry per-path rules in their own claims, which is how
+  # Memcard's `whitelistClaim` / `blacklistClaim` are meant to be driven: the auth
+  # service decides per player what the token may reach, and Memcard only names
+  # which claims to read.
+  #
+  # Deliberately NOT folded into `game-client` above — a token carrying neither
+  # claim is the documented "unrestricted" case, and those five players are what
+  # exercises it. Added for tests/verification/, which asserts both sides.
+  - name: path-claims-player
+    type: direct
+    credential_path: $.request.body.secret
+    credentials:
+      - secret: secret-blacklisted
+        claims:
+          sub: player-blacklisted
+          app: my-game
+          blacklist:
+            - /v1/memcard/me/*
+      - secret: secret-whitelisted
+        claims:
+          sub: player-whitelisted
+          app: my-game
+          whitelist:
+            - /v1/memcard/me/*
+    jwt:
+      algorithm: RS256
+      issuer: token-weaver
+      ttl: 3600

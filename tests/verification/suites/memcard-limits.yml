@@ -1,0 +1,88 @@
+# =========================================================================
+# MEMCARD — limits suite (413 and 429)
+#
+# Separate from the main verification run because it needs a stack configured to
+# refuse things: MEMCARD_MAX_BODY_BYTES=4096 and RATE_LIMIT_MAX=1, set by
+# tests/verification/docker-compose.limits.yml. Nobody would leave that running, so
+# these assertions do not belong in the suite you run every day.
+#
+#   ./x-run-memcard-stash.sh limits
+#
+# The three requests below are ONE sequence and the count is exact. The middleware
+# order is: body parser -> rate limiter -> auth. That first hop is what makes the
+# arithmetic non-obvious — the oversized request is rejected by the parser and
+# never reaches the limiter, so it costs nothing against the budget. With
+# RATE_LIMIT_MAX=1 that leaves request 2 as the only one inside the window and
+# request 3 over it. Adding or reordering a request here breaks the count.
+# =========================================================================
+
+json_headers: &json_headers
+  Content-Type: application/json
+  Accept: application/json
+
+player_headers: &player_headers
+  <<: *json_headers
+  Authorization: { $secrets: PLAYER_AUTH }
+
+StashConfig:
+  Name: MemcardLimits
+
+  Defaults:
+    URLRoot: http://host.docker.internal:3010
+    FlowControl:
+      DelaySeconds: 0
+      TimeoutSeconds: 30
+    Headers:
+      <<: *json_headers
+    # No retries at all. Both statuses this suite asserts are on the default
+    # retry list, so a retry would either mask the result or spend the rate
+    # budget the third request depends on. The backoff fields are required by the
+    # schema even when Attempts is 1 and nothing is retryable.
+    Retry:
+      Attempts: 1
+      BackoffStrategy: fixed
+      BackoffSeconds: 0
+      RetryOnStatus: []
+    Response:
+      PrettyPrint: true
+
+  Sequences:
+    - Name: limits
+      Type: Sequential
+      Requests:
+        # ~8 KB of payload against a 4 KiB ceiling. The body parser refuses it
+        # before auth or S3 are involved, which is why the If-Match value here is
+        # irrelevant — nothing ever looks at it.
+        - oversized_body:
+            Method: PUT
+            URLPath: /v1/memcard/me/state
+            Headers:
+              <<: *player_headers
+              If-Match: '0'
+            Body:
+              state:
+                suite: payloadstash
+                filler: { $dynamic: bigBlob }
+            Expect:
+              - status: 413
+
+        - within_rate_limit:
+            Method: GET
+            URLPath: /v1/memcard/me/state
+            Headers:
+              <<: *player_headers
+            Expect:
+              - status: 200
+
+        - over_rate_limit:
+            Method: GET
+            URLPath: /v1/memcard/me/state
+            Headers:
+              <<: *player_headers
+            Expect:
+              - status: 429
+
+dynamics:
+  patterns:
+    bigBlob:
+      template: '${alphanumeric:8000}'

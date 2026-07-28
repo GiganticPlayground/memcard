@@ -1,0 +1,20 @@
+# Overlay for the S3-unavailable suite.
+#
+#   ./x-run-memcard-stash.sh unavailable
+#
+# Points the S3 client at a port nothing listens on, inside the container's own
+# network namespace, so every call fails to connect. That is the closest
+# reproducible stand-in for the real failure this asserts: S3 unreachable, slow,
+# or answering 5xx. All three land in the same handler, which is what turns them
+# into a 503 with a domain error instead of a stack trace and a 500.
+#
+# It matters because it is the one degraded state a mobile client will actually
+# meet in production, and the difference between 503 and 500 decides whether that
+# client retries or gives up.
+services:
+  memcard:
+    environment:
+      - MEMCARD_S3_ENDPOINT=http://127.0.0.1:9
+      - MEMCARD_S3_FORCE_PATH_STYLE=true
+      # Short, so the suite fails fast rather than sitting out the default.
+      - MEMCARD_S3_TIMEOUT_MS=1000

@@ -1,0 +1,91 @@
+# Memcard deployment config for the PayloadStash verification run.
+#
+# Mounted read-only into the Memcard container at /app/verify/memcard-auth.yaml
+# by docker-compose.verify.yml, which also points MEMCARD_CONFIG_PATH at it.
+#
+# This file exists to be exercised, not to be copied into a deployment: it
+# declares ALL THREE strategy types at once, and takes each of its values from a
+# DIFFERENT source, so one boot proves the whole configuration surface works.
+#
+#   type: jwks    <- issuer + jwks_url from ${env:...}
+#   type: hs256   <- issuer literal, secret from ${file:...}, audience, appClaim,
+#                    requirements (scope + claim_includes), claim-based paths
+#   type: static  <- token from ${env:...}, inline whitelist
+#
+# A real deployment would declare only what it needs. See config/memcard.yaml.example
+# for the annotated template this is derived from.
+
+auth:
+  # ---------------------------------------------------------------------------
+  # (1) jwks — mobile players. Token Weaver signs RS256 and publishes the JWKS;
+  # Memcard only ever verifies, which is why this is the one strategy that cannot
+  # be tested without a running issuer.
+  #
+  # Both values come from the environment, which is what docker-compose.dev.yml
+  # already injects (JWT_ISSUER=token-weaver, JWKS_URI=http://token-weaver:3000/...).
+  # Path rules travel in the token's own claims; the dev tokens carry neither, so
+  # these players are unrestricted — which is itself the documented behavior.
+  # ---------------------------------------------------------------------------
+  - type: jwks
+    issuer: ${env:JWT_ISSUER}
+    jwks_url: ${env:JWKS_URI}
+    appClaim: app
+    paths:
+      whitelistClaim: whitelist
+      blacklistClaim: blacklist
+
+  # ---------------------------------------------------------------------------
+  # (2) hs256 — an internal service that mints its own tokens. HS256 is
+  # symmetric, so whoever holds the secret can sign: the runner mints these
+  # tokens itself and never asks Token Weaver for them. That is deliberate — this
+  # strategy stays green even if Token Weaver is down.
+  #
+  # The secret arrives as a MOUNTED FILE rather than an env var, which is the case
+  # ${file:...} exists for (Docker/K8s secrets are mounted, not exported, so the
+  # value never enters the process environment). The runner writes it to
+  # tests/verification/.run/hs256.secret and the compose overlay mounts it here.
+  #
+  # `admin: true` opens the /v1/memcard/admin routes. The two requirements are
+  # checked after signature verification, so a correctly-signed token that lacks
+  # either claim is rejected with 403 rather than 401 — the suite asserts exactly
+  # that with the no-scope token.
+  # ---------------------------------------------------------------------------
+  - type: hs256
+    issuer: memcard-internal
+    audience: memcard
+    secret: ${file:/run/secrets/memcard-hs256}
+    appClaim: app
+    admin: true
+    requirements:
+      - type: scope
+        value: memcard:admin
+      - type: claim_includes
+        claim: roles
+        value: memcard-operator
+    paths:
+      whitelistClaim: whitelist
+      blacklistClaim: blacklist
+
+  # ---------------------------------------------------------------------------
+  # (3) static — a shared secret for a caller that cannot mint JWTs at all. No
+  # signature, no claims, no expiry: Memcard compares the bearer value in constant
+  # time against this one. Because it carries no claims it cannot name a player,
+  # so the compiler REQUIRES admin: true — the suite asserts the matching runtime
+  # rule by sending it at a player-scoped route and expecting 403.
+  #
+  # The inline whitelist is the only way to scope a static token (there are no
+  # claims to read), and it is what makes this credential admin-routes-only even
+  # though `admin: true` alone would already gate it there.
+  #
+  # Narrowed to a single app rather than the whole admin tree, deliberately: with
+  # `/v1/memcard/admin/*` the list matches every route the credential can reach,
+  # so it never denies anything and the suite could not tell an enforced whitelist
+  # from an ignored one. Scoped to `my-game`, a request for any other app is
+  # refused, and the suite asserts exactly that.
+  # ---------------------------------------------------------------------------
+  - type: static
+    token: ${env:MEMCARD_STATIC_TOKEN}
+    admin: true
+    paths:
+      whitelist:
+        - /v1/memcard/admin/my-game/*

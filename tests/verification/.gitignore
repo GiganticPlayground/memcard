@@ -1,0 +1,6 @@
+# Everything the runner generates: the HS256 secret, the static token, the minted
+# JWTs, and the rendered suite. Regenerated on every run — never committed.
+.run/
+
+# Run artifacts. Keep a run by copying it out, not by committing it.
+output/

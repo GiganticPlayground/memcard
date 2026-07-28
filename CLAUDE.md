@@ -13,6 +13,7 @@ Memcard **verifies** JWTs issued by a separate auth service (e.g. Token Weaver) 
 - **Use `yarn`, not `npm`** for installing packages and running scripts. The repo is yarn-based (`yarn.lock`, Docker uses `corepack`/yarn). `package.json` scripts spell commands as `npm run …` internally, but invoke them via yarn (`yarn validate`, `yarn dev`).
 - **No file extensions in relative imports** (`import { x } from './bar'`). `moduleResolution: "bundler"` resolves them; the build re-adds `.js` for runtime (see below).
 - ESM throughout (`"type": "module"`), run directly with `tsx` in dev.
+- **One handoff document, ever: `docs/HANDOFF.md`.** When work needs to be carried across sessions or handed to someone else, update that file in place — do not create `HANDOFF-2.md`, a dated copy, or a per-feature variant. Stale lines get corrected, not appended to. It holds where the work stands, decisions whose reasoning is not visible in the code, and unclaimed open items; architecture belongs in this file, usage in `README.md`, and anything git history already records belongs in neither.
 
 ## Commands
 
@@ -74,6 +75,8 @@ Throw `HttpError(status, message, { code })`, `StateConflictError(currentEtag)` 
 ## Tests
 
 `node:test` with `@aws-sdk/client-s3` mocked via `aws-sdk-client-mock` (S3 stream bodies built with `@smithy/util-stream`). `tests/setup-env.ts` is imported **first** in each test to populate required env vars before the config module validates them at import time. Coverage focuses on `S3StateStore` (200/304/sentinel/timeout/conflict/sentinel-write), `MemcardService` (key building, envelope wrapping, size limit), and auth (env-derived single strategy, config-file compilation, multi-strategy verification). Auth tests set env vars inline and `await import()` the module under test, since the config singleton evaluates at import; deployment config files under `tests/fixtures/` are pointed at via `MEMCARD_CONFIG_PATH`.
+
+**Black-box verification lives in `tests/verification/`** and is *not* part of `yarn test` — it drives a running stack with [PayloadStash](https://github.com/ericwastaken/PayloadStash), so it needs Docker and real AWS credentials and cannot run in CI. Three suites (`./x-run-memcard-stash.sh [verify|limits|unavailable]`) cover what the unit tests structurally cannot: all three auth strategy types live at once, the admin routes, the ETag cycle end to end against S3, and the 413/429/503 paths. It has its own README; the runner regenerates every credential per run, and nothing it writes is committed (`.run/`, `output/`). `yarn test` and `type-check` skip it because both match `.ts` only, but **`yarn lint` does reach its `.mjs`** — ESLint 9's flat config ignores the `--ext .ts` flag in the lint script — so `eslint.config.js` carries an `**/*.mjs` block declaring the Node globals it needs.
 
 ## Gotchas
 

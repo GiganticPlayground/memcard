@@ -105,4 +105,10 @@ Thumbs.db
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
-.local
+
+# Personal scratch space. Anything here stays on your machine: reference material
+# copied from other repos, one-off configs, captured payloads, credentials you are
+# mid-way through rotating. Same convention as uni-ipb's .local/, which is where
+# the PayloadStash examples under .local/payload-stash-examples/ came from.
+# Ignored wholesale and deliberately never negated — do not add exceptions here.
+.local/

@@ -1,0 +1,23 @@
+# Third overlay, for the limits suite only (413 and 429).
+#
+#   docker compose -f docker-compose.dev.yml \
+#                  -f tests/verification/docker-compose.verify.yml \
+#                  -f tests/verification/docker-compose.limits.yml up -d
+#
+# (x-run-memcard-stash.sh limits does this for you.)
+#
+# These two behaviors can only be observed by making the limits small enough to
+# hit on purpose. Nobody would leave this configuration running, which is exactly
+# why it is a separate overlay and a separate suite rather than part of the main
+# verification run.
+services:
+  memcard:
+    environment:
+      # 4 KiB. The suite sends a state object comfortably past it.
+      - MEMCARD_MAX_BODY_BYTES=4096
+      # One request per minute per client, so the suite needs exactly two requests
+      # to show both sides of the limit. Any higher and it would have to spray
+      # requests and assert on whichever happened to be throttled.
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_MAX=1
+      - RATE_LIMIT_WINDOW_MS=60000

@@ -126,6 +126,29 @@ export default [
     },
   },
 
+  // Plain ESM scripts (the verification suite's token minter). These are tooling,
+  // not application code: they run under plain node with no TypeScript pass, so
+  // the platform globals the .ts block gets from the compiler have to be declared
+  // here, and writing to stdout is the point rather than a lapse in logging.
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+        fetch: 'readonly',
+        TextEncoder: 'readonly',
+        Buffer: 'readonly',
+        URL: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // Disable rules that conflict with Prettier
   prettierConfig,
 ];

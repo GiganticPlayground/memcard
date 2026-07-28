@@ -410,8 +410,10 @@ Types are `jwks` (RS256 against a JWKS endpoint), `hs256` (shared secret), and
 
 Four things are worth knowing before writing one:
 
-- **Secrets stay in the environment.** `${env:VAR}` is resolved at startup and an
-  unset variable stops the boot, so the file is safe to commit next to a deployment.
+- **A secret can come from three places.** Any value may be written inline, or name
+  its source with `${env:VAR}` or `${file:PATH}`. Both placeholders resolve at
+  startup, and an unset variable or unreadable file stops the boot rather than
+  starting half-configured. See [Secret sources](#secret-sources) below.
 - **An inline list replaces the matching claim.** Setting `whitelist` means
   `whitelistClaim` is ignored for that strategy — inline rules are the deployment's,
   claim rules are the token's, and one strategy cannot use both on the same side.
@@ -424,6 +426,37 @@ Four things are worth knowing before writing one:
 The admin gate is enforced in the middleware, not through `paths` — a deployment
 cannot widen it by writing its own patterns, and a player token never reaches those
 routes no matter what its claims say.
+
+### Secret sources
+
+Every string in the config file — `token`, `secret`, `issuer`, `jwks_url`,
+`audience` — goes through the same resolver, so all three forms work anywhere:
+
+| Form | Where the value lives | Use it when |
+| --- | --- | --- |
+| `${env:VAR}` | the process environment | the platform injects secrets as env vars |
+| `${file:PATH}` | a file on disk | secrets are **mounted**, as with Docker/Kubernetes secrets — the value never enters the environment, where child processes and crash dumps can read it |
+| `literal` | the config file itself | local or throwaway deployments; for a real secret this makes the file sensitive and no longer safe to commit |
+
+```yaml
+auth:
+  - type: static
+    token: ${file:/run/secrets/memcard-token} # mounted secret
+    admin: true
+
+  - type: hs256
+    issuer: https://${env:INTERNAL_HOST}/realm # placeholders may be embedded
+    secret: ${env:INTERNAL_JWT_SECRET}
+    admin: true
+```
+
+These are not competing sources for one setting, so there is no precedence to
+reason about: each value names its own origin. Two details worth knowing:
+
+- **A trailing newline is stripped** from a file's contents. `echo secret > file`
+  appends one, and a bearer token compared byte for byte would not survive it.
+- **A file that is missing, unreadable, or empty stops the boot**, exactly like an
+  unset env var — an empty secret mount fails loudly rather than at the first request.
 
 ---
 

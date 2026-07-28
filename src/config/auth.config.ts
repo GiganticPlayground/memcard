@@ -17,9 +17,10 @@ import { config as env } from './index';
  * `token-weaver/auth` middleware consumes. Verification itself stays in that
  * library; this module only parses, validates, and compiles.
  *
- * Secrets never live in the file — `${env:VAR}` placeholders are resolved at
- * startup and a missing var is a hard failure, so the file is safe to commit
- * alongside a deployment.
+ * Secrets need not live in the file: `${env:VAR}` and `${file:PATH}` placeholders
+ * are resolved at startup and an unset var or unreadable file is a hard failure,
+ * so a file written that way is safe to commit alongside a deployment. A literal
+ * value is also accepted — see `resolvePlaceholders` for when that is reasonable.
  *
  * The file is optional. With no file the strategy list is derived from the
  * `JWT_*` env vars, which is exactly the single-strategy behavior Memcard had
@@ -34,7 +35,7 @@ export const ADMIN_ROUTE_PREFIX = '/v1/memcard/admin';
 const DEFAULT_CONFIG_PATH = 'config/memcard.yaml';
 
 // ---------------------------------------------------------------------------
-// Raw schema (what the file may contain, before env interpolation)
+// Raw schema (what the file may contain, before placeholder interpolation)
 // ---------------------------------------------------------------------------
 
 const rawRequirementSchema = z.discriminatedUnion('type', [
@@ -134,17 +135,75 @@ export interface CompiledAuthStrategy {
 }
 
 // ---------------------------------------------------------------------------
-// Env-placeholder resolution (runs at startup)
+// Placeholder resolution (runs at startup)
 // ---------------------------------------------------------------------------
 
-function resolveEnvPlaceholders(value: string, context: string): string {
-  return value.replace(/\$\{env:([A-Za-z0-9_]+)\}/g, (_match, varName: string) => {
-    const resolved = process.env[varName];
-    if (resolved === undefined || resolved === '') {
-      throw new Error(`Env var "${varName}" referenced in the auth config (${context}) is not set`);
-    }
-    return resolved;
-  });
+/**
+ * Where a value may come from, in ascending order of what the config file gives away:
+ *
+ * - `${env:VAR}`   — the environment. For orchestrators that inject secrets as vars.
+ * - `${file:PATH}` — a file. For Docker/Kubernetes secrets, which are *mounted* rather
+ *                    than exported, so the value never appears in the process
+ *                    environment (where any child process or crash dump can read it).
+ * - a literal      — written inline. Fine for an issuer or a JWKS URL; for a secret it
+ *                    makes the config file itself sensitive, so it stops being safe to
+ *                    commit. Supported because a local or throwaway deployment should
+ *                    not need a secret store, not because it is a good production idea.
+ *
+ * These are not three competing sources for one setting — a value is a single string
+ * that may contain any mix of them, so there is no precedence to resolve. Whatever the
+ * file says is where the value comes from.
+ */
+const ENV_VAR_NAME = /^[A-Za-z0-9_]+$/;
+
+function resolveFromEnv(varName: string, context: string): string {
+  if (!ENV_VAR_NAME.test(varName)) {
+    // Previously this could not match at all, so a typo like `${env:MY-VAR}` survived
+    // into the compiled options and became the literal secret. Rejecting is safer.
+    throw new Error(
+      `Malformed placeholder "\${env:${varName}}" in the auth config (${context}) — ` +
+        `an env var name may only contain letters, digits and underscores`,
+    );
+  }
+
+  const resolved = process.env[varName];
+  if (resolved === undefined || resolved === '') {
+    throw new Error(`Env var "${varName}" referenced in the auth config (${context}) is not set`);
+  }
+  return resolved;
+}
+
+function resolveFromFile(rawPath: string, context: string): string {
+  const path = rawPath.trim();
+  if (!path) {
+    throw new Error(
+      `Empty "\${file:}" placeholder in the auth config (${context}) — no path given`,
+    );
+  }
+
+  let contents: string;
+  try {
+    contents = readFileSync(path, 'utf8');
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Secret file "${path}" referenced in the auth config (${context}) could not be read: ${reason}`,
+    );
+  }
+
+  // A mounted secret almost always ends in a newline (`echo secret > file` adds one),
+  // and a bearer token compared byte for byte would not survive it.
+  const value = contents.trim();
+  if (!value) {
+    throw new Error(`Secret file "${path}" referenced in the auth config (${context}) is empty`);
+  }
+  return value;
+}
+
+function resolvePlaceholders(value: string, context: string): string {
+  return value.replace(/\$\{(env|file):([^}]*)\}/g, (_match, kind: string, target: string) =>
+    kind === 'env' ? resolveFromEnv(target, context) : resolveFromFile(target, context),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -184,16 +243,14 @@ function compileStrategy(raw: RawAuth, ctx: string): CompiledAuthStrategy {
       admin: true,
       options: {
         mode: 'static',
-        staticToken: resolveEnvPlaceholders(raw.token, `${ctx}.token`),
+        staticToken: resolvePlaceholders(raw.token, `${ctx}.token`),
         ...(paths ? { paths } : {}),
       },
     };
   }
 
-  const issuer = resolveEnvPlaceholders(raw.issuer, `${ctx}.issuer`);
-  const audience = raw.audience
-    ? resolveEnvPlaceholders(raw.audience, `${ctx}.audience`)
-    : undefined;
+  const issuer = resolvePlaceholders(raw.issuer, `${ctx}.issuer`);
+  const audience = raw.audience ? resolvePlaceholders(raw.audience, `${ctx}.audience`) : undefined;
 
   const shared = {
     issuer,
@@ -206,12 +263,12 @@ function compileStrategy(raw: RawAuth, ctx: string): CompiledAuthStrategy {
     raw.type === 'jwks'
       ? {
           mode: 'jwt-jwks',
-          jwksUri: resolveEnvPlaceholders(raw.jwks_url, `${ctx}.jwks_url`),
+          jwksUri: resolvePlaceholders(raw.jwks_url, `${ctx}.jwks_url`),
           ...shared,
         }
       : {
           mode: 'jwt-hs256',
-          secret: resolveEnvPlaceholders(raw.secret, `${ctx}.secret`),
+          secret: resolvePlaceholders(raw.secret, `${ctx}.secret`),
           ...shared,
         };
 

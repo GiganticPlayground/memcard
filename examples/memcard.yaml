@@ -5,9 +5,18 @@
 # With no file at all, Memcard builds a single strategy from the JWT_* env vars,
 # which is the behavior it had before this file existed.
 #
-# Secrets belong in the environment, not here: ${env:VAR} is resolved at startup
-# and an unset var stops the service from booting, so this file is safe to commit
-# next to a deployment.
+# Any value here may name where it comes from, so a secret need not be written in
+# this file. Both placeholders are resolved at startup, and an unset var or an
+# unreadable file stops the service from booting rather than starting half-configured:
+#
+#   ${env:VAR}    the environment — for orchestrators that inject secrets as vars.
+#   ${file:PATH}  a file — for Docker/Kubernetes secrets, which are mounted rather
+#                 than exported, so the value never enters the process environment.
+#                 A trailing newline is stripped.
+#   <literal>     the value itself. Fine for issuers and URLs; a secret written this
+#                 way makes THIS FILE sensitive, so it stops being safe to commit.
+#
+# Written with placeholders, this file is safe to commit next to a deployment.
 
 auth:
   # ---------------------------------------------------------------------------
@@ -49,6 +58,13 @@ auth:
   # Inline whitelist/blacklist patterns are fixed by this file and are the only
   # way to scope a static token. Note that an inline list REPLACES the matching
   # claim for that strategy: set `whitelist` here and `whitelistClaim` is ignored.
+  #
+  # `token` takes any of the three sources described at the top of this file — pick
+  # whichever your secret store hands you:
+  #
+  #   token: ${env:MEMCARD_STATIC_TOKEN}          # injected as an env var
+  #   token: ${file:/run/secrets/memcard-token}   # mounted as a Docker/K8s secret
+  #   token: dev-only-not-for-production          # inline, local deployments only
   # ---------------------------------------------------------------------------
   # - type: static
   #   token: ${env:MEMCARD_STATIC_TOKEN}

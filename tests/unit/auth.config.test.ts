@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 process.env.TEST_PLAYER_SECRET = 'player-secret';
 process.env.TEST_INTERNAL_SECRET = 'internal-secret';
 process.env.TEST_STATIC_TOKEN = 'static-token';
+process.env.TEST_ISSUER_HOST = 'issuer.test';
 
 const { compileAuthConfigFile } = await import('../../src/config/auth.config');
 
@@ -86,6 +87,54 @@ describe('compileAuthConfigFile', () => {
     assert.throws(
       () => compileAuthConfigFile(fixture('invalid-type')),
       /Auth config validation failed for tests\/fixtures\/auth\.invalid-type\.yaml/,
+    );
+  });
+});
+
+/**
+ * A secret may be named three ways — `${env:VAR}`, `${file:PATH}`, or written
+ * inline. They are interchangeable and resolve to the same compiled options, so a
+ * deployment picks whichever its secret store hands it.
+ */
+describe('secret sources', () => {
+  it('resolves env, file, and literal values into the same compiled shape', () => {
+    const [fromEnv, fromFile, fromLiteral] = compileAuthConfigFile(fixture('secret-sources'));
+
+    assert.equal(fromEnv?.options.secret, 'player-secret');
+    assert.equal(fromFile?.options.staticToken, 'file-sourced-token');
+    assert.equal(fromLiteral?.options.secret, 'literal-secret');
+  });
+
+  it('strips the trailing newline a mounted secret file carries', () => {
+    const [, fromFile] = compileAuthConfigFile(fixture('secret-sources'));
+
+    // The fixture ends in "\n"; a bearer token is compared byte for byte, so a
+    // surviving newline would reject every request with no visible cause.
+    assert.equal(fromFile?.options.staticToken, 'file-sourced-token');
+    assert.doesNotMatch(String(fromFile?.options.staticToken), /\s/);
+  });
+
+  it('interpolates a placeholder embedded in a larger value', () => {
+    const strategies = compileAuthConfigFile(fixture('secret-sources'));
+
+    assert.equal(strategies[3]?.issuer, 'https://issuer.test/realm');
+  });
+
+  it('fails fast when a referenced secret file is missing', () => {
+    assert.throws(
+      () => compileAuthConfigFile(fixture('missing-secret-file')),
+      /does-not-exist\.secret".*could not be read/s,
+    );
+  });
+
+  it('fails fast when a referenced secret file is empty', () => {
+    assert.throws(() => compileAuthConfigFile(fixture('empty-secret-file')), /is empty/);
+  });
+
+  it('rejects a malformed env placeholder instead of passing it through', () => {
+    assert.throws(
+      () => compileAuthConfigFile(fixture('malformed-env')),
+      /Malformed placeholder.*TEST-STATIC-TOKEN/s,
     );
   });
 });

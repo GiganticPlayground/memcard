@@ -11,9 +11,40 @@ pnpm-debug.log*
 .env.development.local
 .env.test.local
 .env.production.local
+# Catch the variants not spelled out above (.env.production, .env.staging, ...).
+.env.*
+!.env.example
 
 # Dev auth stack: locally generated RSA keys (never commit signing keys)
 dev/token-weaver/keys/
+
+# Secret material read by ${file:PATH} placeholders in the auth config.
+# The fixtures under tests/ hold fake values and are part of the test suite.
+*.secret
+secrets/
+config/secrets/
+!tests/fixtures/*.secret
+
+# Private keys and certificates, wherever they land
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+
+# Working notes that tend to accumulate real credentials. Ignoring them keeps them
+# out of history; it does NOT make the contents safe — move or rotate those instead.
+demo-secrets.md
+s3-keys.md
+
+# Live analytics config: the auto-detected location, which may carry sink
+# endpoints and credentials. The committed template under examples/ stays.
+/reqcast.config.json
+
+# NOTE: config/memcard.yaml is deliberately NOT ignored. Written with
+# ${env:...} / ${file:...} placeholders it holds no secrets and is meant to be
+# committed next to its deployment. If you inline a literal secret there instead,
+# ignore it locally — do not relax this file for everyone.
 
 
 # Build output

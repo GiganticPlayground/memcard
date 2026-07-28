@@ -1,5 +1,48 @@
 import { z } from 'zod';
 
+/** Characters accepted in a key path segment, kept deliberately narrower than S3's. */
+const KEY_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/;
+
+/**
+ * A variable that becomes part of the S3 object key (`MEMCARD_KEY_PREFIX`,
+ * `MEMCARD_ENV`).
+ *
+ * These are concatenated into the key, so a stray slash or a `..` silently moves
+ * every state object — to the bucket root, or into another producer's tree when
+ * the bucket is shared. Surrounding slashes are normalized away so `saves`,
+ * `/saves` and `saves/` name the same place; anything that could still corrupt
+ * the key fails the boot instead of producing a surprising layout.
+ *
+ * Multi-level values are allowed (`team-a/memcard`), the bucket root is not:
+ * Memcard shares buckets with other services, so "no prefix" is a mistake rather
+ * than a configuration.
+ */
+function keyPathVar(label: string, defaultValue?: string) {
+  const base =
+    defaultValue === undefined ? z.string() : z.string().optional().default(defaultValue);
+
+  return base
+    .transform((value) => value.trim().replace(/^\/+|\/+$/g, ''))
+    .pipe(
+      z
+        .string()
+        .min(1, {
+          error: `${label} cannot be empty — Memcard does not write to the bucket root`,
+        })
+        .refine((value) => KEY_SEGMENT_PATTERN.test(value), {
+          error:
+            `${label} must be one or more '/'-separated segments of letters, digits, ` +
+            `'.', '_' or '-' (got an empty segment, whitespace, or an unsupported character)`,
+        })
+        .refine(
+          (value) => !value.split('/').some((segment) => segment === '.' || segment === '..'),
+          {
+            error: `${label} cannot contain '.' or '..' path segments`,
+          },
+        ),
+    );
+}
+
 /**
  * Environment variables validation schema.
  *
@@ -80,8 +123,9 @@ export const envSchema = z
     // --- AWS / S3 ---
     AWS_REGION: z.string().min(1),
     MEMCARD_S3_BUCKET: z.string().min(1),
-    MEMCARD_ENV: z.string().min(1),
-    MEMCARD_KEY_PREFIX: z.string().min(1).optional().default('memcard'),
+    // Both of these land in the object key — see `keyPathVar` for the rules.
+    MEMCARD_ENV: keyPathVar('MEMCARD_ENV'),
+    MEMCARD_KEY_PREFIX: keyPathVar('MEMCARD_KEY_PREFIX', 'memcard'),
     MEMCARD_MAX_BODY_BYTES: z
       .string()
       .transform((val) => parseInt(val, 10))

@@ -12,6 +12,17 @@ export type MemcardFetchResult =
   | { status: 304; etag: string };
 
 /**
+ * The object key for one player's state. The only place the layout is written
+ * down — anything that needs to name or display it (the startup log, docs
+ * tooling) must call this rather than restate the template, so the two cannot
+ * drift. Both config segments are normalized and validated at startup
+ * (`keyPathVar` in `src/config/env.validation.ts`), so they join cleanly here.
+ */
+export function buildStateKey(app: string, userId: string): string {
+  return `${config.MEMCARD_KEY_PREFIX}/${config.MEMCARD_ENV}/${app}/${userId}/state.json`;
+}
+
+/**
  * Memcard domain logic: resolves the per-player S3 key, mediates conditional
  * reads/writes, and enforces the configured payload size limit.
  */
@@ -19,7 +30,7 @@ export class MemcardService {
   constructor(private readonly store: S3StateStore) {}
 
   private buildKey(app: string, userId: string): string {
-    return `${config.MEMCARD_KEY_PREFIX}/${config.MEMCARD_ENV}/${app}/${userId}/state.json`;
+    return buildStateKey(app, userId);
   }
 
   async fetch(app: string, userId: string, ifNoneMatch?: string): Promise<MemcardFetchResult> {

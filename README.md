@@ -54,6 +54,27 @@ where `{env}` is fixed per deployment (`MEMCARD_ENV`), `{app}` comes from the JW
 app claim, and `{userId}` is the JWT `sub`. ETags are opaque — never parsed, only
 compared and echoed.
 
+`MEMCARD_KEY_PREFIX` exists so Memcard can share a bucket with other producers.
+Both it and `MEMCARD_ENV` are normalized at startup — surrounding slashes and
+whitespace are stripped, so `saves`, `/saves` and `saves/` are the same prefix —
+and validated: multi-level values (`team-a/memcard`) are fine, but an empty value,
+an empty inner segment, a `..`, or a character that could corrupt the key stops the
+boot. The bucket root is deliberately not a valid prefix. The resolved location is
+printed once at startup, so you can confirm it without leaving the terminal:
+
+```
+State objects: s3://my-game-saves/memcard/prod/{app}/{userId}/state.json
+```
+
+**Choosing the prefix is a deployment decision, and so is avoiding collisions.**
+Memcard does not know what else lives in the bucket. Pick a prefix no other
+producer writes under, and enforce it where it can actually be enforced — scope
+the instance's IAM policy to `arn:aws:s3:::<bucket>/<prefix>/*` rather than the
+whole bucket. Note that changing the prefix of a running deployment orphans every
+save already written, and does so quietly: a key that does not resolve reads as a
+brand-new player (sentinel ETag, empty state), and the next write persists that
+empty state at the new location. Copy the old tree first (`aws s3 sync`).
+
 When a client saves with a stale ETag, S3 returns `412 Precondition Failed` and
 Memcard translates it into a domain-level `409 STATE_CONFLICT` carrying the current
 ETag, so the client can re-fetch, merge, and retry. A brand-new player sends the
@@ -321,8 +342,8 @@ still take their secrets from the environment.
 | `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window length (ms) |
 | `AWS_REGION` | _required_ | AWS region of the bucket |
 | `MEMCARD_S3_BUCKET` | _required_ | S3 bucket holding state objects |
-| `MEMCARD_ENV` | _required_ | `{env}` segment of the S3 key |
-| `MEMCARD_KEY_PREFIX` | `memcard` | Key prefix |
+| `MEMCARD_ENV` | _required_ | `{env}` segment of the S3 key; free-form, normalized and validated like the prefix |
+| `MEMCARD_KEY_PREFIX` | `memcard` | Key prefix owning Memcard's tree in the bucket; may be multi-level, may not be empty |
 | `MEMCARD_MAX_BODY_BYTES` | `2097152` | Max PUT body size before `413` |
 | `MEMCARD_SENTINEL_ETAG` | `0` | Sentinel ETag for first-write bootstrap |
 | `MEMCARD_SCHEMA_VERSION` | `1` | `schemaVersion` written into the stored envelope |
@@ -481,6 +502,9 @@ controller export (binding is by the `x-eov-operation-handler` /
 - Upstream S3 timeouts/unavailability return `503`.
 - Out of scope (handle with your IaC): bucket provisioning, object versioning +
   lifecycle, IAM least-privilege, encryption at rest.
+- When the bucket is shared, scope the instance's IAM policy to
+  `arn:aws:s3:::<bucket>/$MEMCARD_KEY_PREFIX/*`. A wrong prefix then fails loudly
+  (`AccessDenied` → `500`) instead of quietly writing into another service's tree.
 - The in-process rate limiter is per-instance; back it with a shared store (e.g.
   Redis) when scaling horizontally.
 

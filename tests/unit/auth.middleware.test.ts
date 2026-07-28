@@ -10,7 +10,7 @@ import { SignJWT } from 'jose';
  *
  * This covers the **env-derived** single strategy, i.e. the setup with no auth
  * config file, so it assumes `config/memcard.yaml` does not exist in the working
- * tree (nothing commits one; the example lives at `examples/memcard.yaml`).
+ * tree (nothing commits one; the template is `config/memcard.yaml.example`).
  * Multi-strategy behavior is covered in `auth.multi-strategy.test.ts`.
  *
  * Env vars are set *before* the middleware (and therefore the config singleton)

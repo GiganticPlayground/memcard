@@ -2,11 +2,12 @@ import type { Request } from 'express';
 import type { JWTPayload } from 'jose';
 import { createAuthMiddleware } from 'token-weaver/auth';
 
+import { config } from '../config/index';
 import {
   ADMIN_ROUTE_PREFIX,
   loadAuthStrategies,
   type CompiledAuthStrategy,
-} from '../config/auth.config';
+} from '../config/memcard-config';
 import type { AuthContext, AuthStrategyContext } from '../types/express';
 import { HttpError, logger } from '../utils/index';
 
@@ -23,9 +24,10 @@ import { HttpError, logger } from '../utils/index';
  * caller more than "bad token"). Nothing reaches S3 before this passes.
  *
  * Where the strategies come from is a deployment decision — see
- * `src/config/auth.config.ts`.
+ * `src/config/memcard-config.ts`. That module takes the environment as an
+ * argument rather than importing it, so binding the two happens here.
  */
-const strategies = loadAuthStrategies();
+const strategies = loadAuthStrategies(config);
 
 /** Strategies indexed by the issuer of the tokens they verify (JWT strategies only). */
 const byIssuer = new Map<string, CompiledAuthStrategy>(

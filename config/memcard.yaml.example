@@ -1,7 +1,7 @@
 # Memcard deployment config — auth strategies.
 #
-# Point MEMCARD_CONFIG_PATH at a copy of this file, or drop it at
-# config/memcard.yaml (the default location, used automatically when present).
+# Copy this file to config/memcard.yaml (the default location, used automatically
+# when present), or point MEMCARD_CONFIG_PATH at a copy of it elsewhere.
 # With no file at all, Memcard builds a single strategy from the JWT_* env vars,
 # which is the behavior it had before this file existed.
 #

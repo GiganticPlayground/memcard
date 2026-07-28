@@ -377,8 +377,9 @@ the setup Memcard has always had. Nothing else is needed for the common case of
 "players hold a JWT from our auth service".
 
 **A config file** is how a deployment accepts more than one kind of caller at once.
-Copy [`examples/memcard.yaml`](examples/memcard.yaml), point `MEMCARD_CONFIG_PATH`
-at it (or drop it at `config/memcard.yaml`), and list the strategies:
+Copy [`config/memcard.yaml.example`](config/memcard.yaml.example) to
+`config/memcard.yaml` (the default location, picked up automatically) or point
+`MEMCARD_CONFIG_PATH` at it, and list the strategies:
 
 ```yaml
 auth:
@@ -517,7 +518,7 @@ controller export (binding is by the `x-eov-operation-handler` /
 ## Project layout
 
 - [src/middlewares/auth.middleware.ts](src/middlewares/auth.middleware.ts) — token verification, identity mapping, admin gate
-- [src/config/auth.config.ts](src/config/auth.config.ts) — auth config file schema and strategy compiler
+- [src/config/memcard-config.ts](src/config/memcard-config.ts) — deployment config file schema and strategy compiler
 - [src/services/memcard.service.ts](src/services/memcard.service.ts) — domain logic, key construction, size enforcement
 - [src/services/s3.service.ts](src/services/s3.service.ts) — conditional S3 read/write and ETag mapping
 - [src/controllers/memcardController.ts](src/controllers/memcardController.ts) — GET/PUT handlers, player and admin

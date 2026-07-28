@@ -5,10 +5,8 @@ import type { AuthPaths, AuthRequirement, AuthStrategyOptions } from 'token-weav
 import YAML from 'yaml';
 import { z } from 'zod';
 
-import { config as env } from './index';
-
 /**
- * Auth configuration.
+ * Deployment config file — the `auth:` section.
  *
  * Memcard can accept several kinds of caller at once — mobile players holding a
  * JWT from the auth service, and internal services holding a token of their own.
@@ -16,6 +14,11 @@ import { config as env } from './index';
  * is compiled here into the `AuthStrategyOptions[]` shape that the shared
  * `token-weaver/auth` middleware consumes. Verification itself stays in that
  * library; this module only parses, validates, and compiles.
+ *
+ * Everything this module needs from the environment arrives as an argument — it
+ * deliberately does not import the validated config singleton, so the loader can
+ * be exercised without a fully populated environment. Same reasoning as Qodi's
+ * `src/config/qodi-config.ts`, which this file follows.
  *
  * Secrets need not live in the file: `${env:VAR}` and `${file:PATH}` placeholders
  * are resolved at startup and an unset var or unreadable file is a hard failure,
@@ -120,6 +123,25 @@ const rawConfigSchema = z.object({
 // Compiled shape (what the middleware actually uses)
 // ---------------------------------------------------------------------------
 
+/**
+ * The environment this module reads, passed in rather than imported.
+ *
+ * The validated `Env` satisfies it structurally, so callers hand over `config`;
+ * a test hands over a literal with only the fields the case needs.
+ */
+export interface AuthEnv {
+  JWT_AUTH_MODE: 'jwt-jwks' | 'jwt-hs256';
+  JWKS_URI?: string | undefined;
+  JWT_SECRET?: string | undefined;
+  JWT_ISSUER: string;
+  JWT_AUDIENCE?: string | undefined;
+  JWT_APP_CLAIM: string;
+  JWT_WHITELIST_CLAIM: string;
+  JWT_BLACKLIST_CLAIM: string;
+  JWT_PATH_PREFIX?: string | undefined;
+  MEMCARD_CONFIG_PATH?: string | undefined;
+}
+
 export interface CompiledAuthStrategy {
   type: RawAuth['type'];
   /** Human-readable label for logs and config errors. */
@@ -223,7 +245,7 @@ function compilePaths(raw: RawPaths | undefined): AuthPaths | undefined {
   return paths;
 }
 
-function compileStrategy(raw: RawAuth, ctx: string): CompiledAuthStrategy {
+function compileStrategy(raw: RawAuth, ctx: string, defaultAppClaim: string): CompiledAuthStrategy {
   const paths = compilePaths(raw.paths);
 
   if (raw.type === 'static') {
@@ -277,17 +299,20 @@ function compileStrategy(raw: RawAuth, ctx: string): CompiledAuthStrategy {
     label: `${ctx} (${raw.type}, issuer ${issuer})`,
     admin: raw.admin,
     issuer,
-    appClaim: raw.appClaim ?? env.JWT_APP_CLAIM,
+    appClaim: raw.appClaim ?? defaultAppClaim,
     options,
   };
 }
 
-function compileStrategies(raw: RawAuth | RawAuth[]): CompiledAuthStrategy[] {
+function compileStrategies(
+  raw: RawAuth | RawAuth[],
+  defaultAppClaim: string,
+): CompiledAuthStrategy[] {
   const list = Array.isArray(raw) ? raw : [raw];
   // Only index the label when there is more than one, so a single-strategy error
   // reads "auth.secret" rather than "auth[0].secret".
   const compiled = list.map((entry, i) =>
-    compileStrategy(entry, list.length > 1 ? `auth[${i}]` : 'auth'),
+    compileStrategy(entry, list.length > 1 ? `auth[${i}]` : 'auth', defaultAppClaim),
   );
 
   // A verified payload is routed back to its strategy by `iss` (see the middleware),
@@ -317,7 +342,7 @@ function compileStrategies(raw: RawAuth | RawAuth[]): CompiledAuthStrategy[] {
  * It is never an admin strategy: reading another player's state has to be opted
  * into explicitly, which means writing a config file.
  */
-function strategyFromEnv(): RawAuth {
+function strategyFromEnv(env: AuthEnv): RawAuth {
   const paths = {
     whitelistClaim: env.JWT_WHITELIST_CLAIM,
     blacklistClaim: env.JWT_BLACKLIST_CLAIM,
@@ -347,8 +372,16 @@ function strategyFromEnv(): RawAuth {
   return { type: 'jwks', jwks_url: env.JWKS_URI, ...shared };
 }
 
-/** Parse and compile a config file. Exported for tests; prefer `loadAuthStrategies()`. */
-export function compileAuthConfigFile(filePath: string): CompiledAuthStrategy[] {
+/**
+ * Parse and compile a config file. Exported for tests; prefer `loadAuthStrategies()`.
+ *
+ * `defaultAppClaim` is the claim a strategy that names none falls back to — the
+ * deployment's `JWT_APP_CLAIM`, passed in so this function needs no environment.
+ */
+export function compileAuthConfigFile(
+  filePath: string,
+  defaultAppClaim: string,
+): CompiledAuthStrategy[] {
   const contents = readFileSync(filePath, 'utf8');
   const parsed: unknown =
     extname(filePath).toLowerCase() === '.json' ? JSON.parse(contents) : YAML.parse(contents);
@@ -361,7 +394,7 @@ export function compileAuthConfigFile(filePath: string): CompiledAuthStrategy[] 
     throw new Error(`Auth config validation failed for ${filePath}:\n${issues}`);
   }
 
-  return compileStrategies(result.data.auth);
+  return compileStrategies(result.data.auth, defaultAppClaim);
 }
 
 /**
@@ -372,18 +405,18 @@ export function compileAuthConfigFile(filePath: string): CompiledAuthStrategy[] 
  * With no explicit path, the default location is used when present, and otherwise
  * the env vars describe a single strategy.
  */
-export function loadAuthStrategies(): CompiledAuthStrategy[] {
+export function loadAuthStrategies(env: AuthEnv): CompiledAuthStrategy[] {
   const explicitPath = env.MEMCARD_CONFIG_PATH;
   if (explicitPath !== undefined) {
     if (!existsSync(explicitPath)) {
       throw new Error(`Config file not found at MEMCARD_CONFIG_PATH="${explicitPath}"`);
     }
-    return compileAuthConfigFile(explicitPath);
+    return compileAuthConfigFile(explicitPath, env.JWT_APP_CLAIM);
   }
 
   if (existsSync(DEFAULT_CONFIG_PATH)) {
-    return compileAuthConfigFile(DEFAULT_CONFIG_PATH);
+    return compileAuthConfigFile(DEFAULT_CONFIG_PATH, env.JWT_APP_CLAIM);
   }
 
-  return compileStrategies(strategyFromEnv());
+  return compileStrategies(strategyFromEnv(env), env.JWT_APP_CLAIM);
 }

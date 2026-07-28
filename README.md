@@ -114,6 +114,7 @@ cp .env.example .env
 
 Then set the **required** values in `.env`:
 
+
 | Variable | Example | What it is |
 | --- | --- | --- |
 | `AWS_REGION` | `us-east-1` | Region of your bucket |

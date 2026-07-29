@@ -15,6 +15,7 @@ import {
   errorHandlerMiddleware,
   requestContextMiddleware,
 } from './middlewares/index';
+import { buildStateKey } from './services/memcard.service';
 import { buildAnalytics, logger } from './utils/index';
 import { setupShutdown } from './utils/shutdown';
 
@@ -71,6 +72,12 @@ app.use(errorHandlerMiddleware);
 
 const server = app.listen(config.PORT, () => {
   logger.info(`Server is running on port ${config.PORT}`);
+  // The resolved layout, printed once. The bucket may be shared with other
+  // producers, and a wrong prefix does not fail — a missing object reads as a
+  // brand-new player — so this line is what makes a misconfiguration visible.
+  logger.info(
+    `State objects: s3://${config.MEMCARD_S3_BUCKET}/${buildStateKey('{app}', '{userId}')}`,
+  );
 });
 
 // In-flight requests drain first so their analytics records get dispatched,

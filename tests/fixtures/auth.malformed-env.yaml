@@ -1,0 +1,6 @@
+# Invalid at startup: a hyphen is not legal in an env var name. Caught rather than
+# passed through, since an unresolved placeholder would become the literal secret.
+auth:
+  - type: static
+    token: ${env:TEST-STATIC-TOKEN}
+    admin: true

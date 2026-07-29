@@ -1,0 +1,4 @@
+# Invalid: "oauth" is not one of the supported strategy types.
+auth:
+  - type: oauth
+    issuer: https://players.test

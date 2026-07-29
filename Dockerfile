@@ -73,6 +73,10 @@ COPY --from=builder /app/node_modules/reqcast ./node_modules/reqcast
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/api ./api
 
+# The auth config file is deliberately NOT baked in: it is a per-deployment
+# artifact. Mount it and set MEMCARD_CONFIG_PATH, or leave both out to run with
+# the single strategy described by the JWT_* env vars.
+
 # Expose the port the app runs on
 EXPOSE 3000
 

@@ -45,10 +45,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memcard/admin/{app}/{userId}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Application namespace the player belongs to. */
+                app: components["schemas"]["KeySegment"];
+                /** @description Player whose state is being addressed. */
+                userId: components["schemas"]["KeySegment"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch any player's state (service-to-service)
+         * @description Same semantics as the player-scoped read, but the target comes from the URL instead of the token. Reserved for credentials the deployment marks as `admin` in its auth config; every other caller receives `403`.
+         */
+        get: operations["getPlayerState"];
+        /**
+         * Save any player's state (service-to-service)
+         * @description Same conditional-write semantics as the player-scoped save, with the target taken from the URL. Reserved for credentials the deployment marks as `admin` in its auth config; every other caller receives `403`.
+         */
+        put: operations["putPlayerState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description One segment of the S3 object key. Constrained so a caller cannot inject key structure; `.` and `..` are rejected outright.
+         * @example my-game
+         */
+        KeySegment: string;
         HealthCheck: {
             /** @example ok */
             status: string;
@@ -151,6 +185,15 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Token is valid but not allowed on this path (its whitelist/blacklist rules, or a credential that carries no player identity). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description S3 unavailable */
             503: {
                 headers: {
@@ -207,10 +250,183 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /** @description Token is valid but not allowed on this path (its whitelist/blacklist rules, or a credential that carries no player identity). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description State was modified since the client's last fetch */
             409: {
                 headers: {
                     /** @description Current opaque version identifier the client should reconcile against */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StateConflict"];
+                };
+            };
+            /** @description Request body exceeds the configured size limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description S3 unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPlayerState: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description ETag of the cached version held by the caller. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description Application namespace the player belongs to. */
+                app: components["schemas"]["KeySegment"];
+                /** @description Player whose state is being addressed. */
+                userId: components["schemas"]["KeySegment"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current state returned */
+            200: {
+                headers: {
+                    /** @description Opaque version identifier of the returned state */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemcardStateResponse"];
+                };
+            };
+            /** @description Caller's cached state is current; no body returned */
+            304: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing, expired, or invalid token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Credential is not allowed on the admin routes */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description S3 unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putPlayerState: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag the caller believes is current (or the sentinel for a first write). */
+                "If-Match": string;
+            };
+            path: {
+                /** @description Application namespace the player belongs to. */
+                app: components["schemas"]["KeySegment"];
+                /** @description Player whose state is being addressed. */
+                userId: components["schemas"]["KeySegment"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemcardStateUpdate"];
+            };
+        };
+        responses: {
+            /** @description State saved */
+            200: {
+                headers: {
+                    /** @description Newly issued opaque version identifier */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemcardSaveResponse"];
+                };
+            };
+            /** @description Malformed request body or missing required header */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing, expired, or invalid token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Credential is not allowed on the admin routes */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description State was modified since the caller's last fetch */
+            409: {
+                headers: {
+                    /** @description Current opaque version identifier to reconcile against */
                     ETag?: string;
                     [name: string]: unknown;
                 };

@@ -1,0 +1,83 @@
+# =========================================================================
+# MEMCARD — S3-unavailable suite (503)
+#
+# Runs against a stack whose S3 client points at a dead port, set by
+# tests/verification/docker-compose.unavailable.yml:
+#
+#   ./x-run-memcard-stash.sh unavailable
+#
+# What this is actually about: a client must be able to tell "the store is
+# temporarily gone, retry" from "your request was wrong, don't". That is the
+# difference between 503 and 500, and it is the only degraded state a mobile
+# client will routinely meet in production.
+#
+# Health is asserted first and must stay 200 — it touches no S3, so a health
+# check that fails here would mean the outage had spread past its blast radius
+# and taken liveness reporting with it.
+# =========================================================================
+
+json_headers: &json_headers
+  Content-Type: application/json
+  Accept: application/json
+
+player_headers: &player_headers
+  <<: *json_headers
+  Authorization: { $secrets: PLAYER_AUTH }
+
+StashConfig:
+  Name: MemcardUnavailable
+
+  Defaults:
+    URLRoot: http://host.docker.internal:3010
+    FlowControl:
+      DelaySeconds: 0
+      TimeoutSeconds: 30
+    Headers:
+      <<: *json_headers
+    # 503 is the expected result here, so the default retry list would turn every
+    # assertion into a three-attempt wait for the same answer.
+    Retry:
+      Attempts: 1
+      BackoffStrategy: fixed
+      BackoffSeconds: 0
+      RetryOnStatus: []
+    Response:
+      PrettyPrint: true
+
+  Sequences:
+    - Name: unavailable
+      Type: Sequential
+      Requests:
+        # Liveness does not depend on the store.
+        - health_still_ok:
+            Method: GET
+            URLPath: /health
+            Expect:
+              - status: 200
+              - body.status: { equals: 'ok' }
+
+        - read_returns_503:
+            Method: GET
+            URLPath: /v1/memcard/me/state
+            Headers:
+              <<: *player_headers
+            Expect:
+              - status: 503
+              # Not a bare status: a 503 rendered as an empty body or an HTML
+              # error page is useless to the client that has to decide whether to
+              # retry. The message is the contract.
+              - body.message: { exists: true }
+
+        - write_returns_503:
+            Method: PUT
+            URLPath: /v1/memcard/me/state
+            Headers:
+              <<: *player_headers
+              If-Match: '0'
+            Body:
+              state:
+                suite: payloadstash
+                route: unavailable
+            Expect:
+              - status: 503
+              - body.message: { exists: true }

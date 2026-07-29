@@ -1,0 +1,74 @@
+# Memcard deployment config — auth strategies.
+#
+# Copy this file to config/memcard.yaml (the default location, used automatically
+# when present), or point MEMCARD_CONFIG_PATH at a copy of it elsewhere.
+# With no file at all, Memcard builds a single strategy from the JWT_* env vars,
+# which is the behavior it had before this file existed.
+#
+# Any value here may name where it comes from, so a secret need not be written in
+# this file. Both placeholders are resolved at startup, and an unset var or an
+# unreadable file stops the service from booting rather than starting half-configured:
+#
+#   ${env:VAR}    the environment — for orchestrators that inject secrets as vars.
+#   ${file:PATH}  a file — for Docker/Kubernetes secrets, which are mounted rather
+#                 than exported, so the value never enters the process environment.
+#                 A trailing newline is stripped.
+#   <literal>     the value itself. Fine for issuers and URLs; a secret written this
+#                 way makes THIS FILE sensitive, so it stops being safe to commit.
+#
+# Written with placeholders, this file is safe to commit next to a deployment.
+
+auth:
+  # ---------------------------------------------------------------------------
+  # Mobile players. Path rules travel in the token's own claims, so the auth
+  # service decides per player what the token may reach; a token carrying neither
+  # claim is unrestricted.
+  # ---------------------------------------------------------------------------
+  - type: jwks
+    issuer: ${env:JWT_ISSUER}
+    jwks_url: ${env:JWKS_URI}
+    # audience: memcard
+    paths:
+      whitelistClaim: whitelist
+      blacklistClaim: blacklist
+
+  # ---------------------------------------------------------------------------
+  # An internal service that mints its own HS256 tokens. `admin: true` lets it
+  # reach /v1/memcard/admin/{app}/{userId}/state, where the target player comes
+  # from the URL rather than the token — so this credential can read and write
+  # ANY player's state. Grant it deliberately.
+  #
+  # `requirements` are claim checks applied after verification: this one only
+  # accepts tokens whose `scope` claim includes `memcard:admin`.
+  # ---------------------------------------------------------------------------
+  # - type: hs256
+  #   issuer: https://internal-tools.example.com
+  #   secret: ${env:INTERNAL_JWT_SECRET}
+  #   appClaim: app
+  #   admin: true
+  #   requirements:
+  #     - type: scope
+  #       value: memcard:admin
+
+  # ---------------------------------------------------------------------------
+  # A shared secret for a service that cannot mint JWTs. A static token carries
+  # no claims, so it cannot name a player and is only accepted on the admin
+  # routes — `admin: true` is required, not optional.
+  #
+  # Inline whitelist/blacklist patterns are fixed by this file and are the only
+  # way to scope a static token. Note that an inline list REPLACES the matching
+  # claim for that strategy: set `whitelist` here and `whitelistClaim` is ignored.
+  #
+  # `token` takes any of the three sources described at the top of this file — pick
+  # whichever your secret store hands you:
+  #
+  #   token: ${env:MEMCARD_STATIC_TOKEN}          # injected as an env var
+  #   token: ${file:/run/secrets/memcard-token}   # mounted as a Docker/K8s secret
+  #   token: dev-only-not-for-production          # inline, local deployments only
+  # ---------------------------------------------------------------------------
+  # - type: static
+  #   token: ${env:MEMCARD_STATIC_TOKEN}
+  #   admin: true
+  #   paths:
+  #     whitelist:
+  #       - /v1/memcard/admin/*

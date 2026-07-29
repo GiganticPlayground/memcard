@@ -1,0 +1,21 @@
+# Three kinds of caller at once, in precedence order.
+auth:
+  # Mobile players — path rules travel in the token's claims.
+  - type: hs256
+    issuer: https://players.test
+    secret: ${env:TEST_PLAYER_SECRET}
+    paths:
+      whitelistClaim: whitelist
+      blacklistClaim: blacklist
+
+  # An internal service holding a JWT of its own, under a different app claim.
+  - type: hs256
+    issuer: https://internal.test
+    secret: ${env:TEST_INTERNAL_SECRET}
+    appClaim: tenant
+    admin: true
+
+  # A shared secret for a service that cannot mint JWTs.
+  - type: static
+    token: ${env:TEST_STATIC_TOKEN}
+    admin: true

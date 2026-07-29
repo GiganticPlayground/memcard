@@ -11,10 +11,24 @@ export interface AuthContext {
   app: string;
 }
 
+/**
+ * Which configured strategy accepted the request. Recorded so the admin
+ * controllers can re-check the privilege they depend on instead of trusting
+ * that the middleware ran, and so logs can tell the callers apart.
+ */
+export interface AuthStrategyContext {
+  type: 'jwks' | 'hs256' | 'static';
+  /** Whether this credential is allowed on the admin routes. */
+  admin: boolean;
+  /** Issuer of the verified token — absent for a static token. */
+  issuer?: string;
+}
+
 declare global {
   namespace Express {
     interface Request {
       auth?: AuthContext;
+      authStrategy?: AuthStrategyContext;
     }
   }
 }

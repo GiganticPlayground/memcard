@@ -8,6 +8,11 @@ import { SignJWT } from 'jose';
  * Auth middleware test — exercises the HS256 (`jwt-hs256`) verification path
  * end to end against the shared `token-weaver/auth` middleware.
  *
+ * This covers the **env-derived** single strategy, i.e. the setup with no auth
+ * config file, so it assumes `config/memcard.yaml` does not exist in the working
+ * tree (nothing commits one; the template is `config/memcard.yaml.example`).
+ * Multi-strategy behavior is covered in `auth.multi-strategy.test.ts`.
+ *
  * Env vars are set *before* the middleware (and therefore the config singleton)
  * is imported, so we use a dynamic import below. `node --test` isolates each
  * test file in its own process, so this does not affect other suites.
@@ -15,6 +20,7 @@ import { SignJWT } from 'jose';
 const SECRET = 'unit-test-secret';
 const ISSUER = 'https://auth.test';
 const APP = 'my-game';
+const APP_CLAIM = process.env.JWT_APP_CLAIM ?? 'app';
 
 process.env.NODE_ENV = 'test';
 process.env.LOG_TYPE = 'hidden';
@@ -38,10 +44,15 @@ function signToken(claims: Record<string, unknown>, sub?: string): Promise<strin
 }
 
 /** Run the middleware against a synthetic request, resolving with the captured outcome. */
-function runMiddleware(token: string | undefined): Promise<{ err: unknown; req: Request }> {
+function runMiddleware(
+  token: string | undefined,
+  route: { baseUrl?: string; path?: string } = {},
+): Promise<{ err: unknown; req: Request }> {
   return new Promise((resolve) => {
     const req = {
       headers: token ? { authorization: `Bearer ${token}` } : {},
+      baseUrl: route.baseUrl ?? '',
+      path: route.path ?? '/',
     } as unknown as Request;
     const res = {} as Response;
     const next: NextFunction = (err?: unknown) => resolve({ err, req });
@@ -49,11 +60,11 @@ function runMiddleware(token: string | undefined): Promise<{ err: unknown; req: 
   });
 }
 
+// Path matched by the auth middleware is `req.baseUrl + req.path`.
+const MEMCARD_ROUTE = { baseUrl: '/v1/memcard', path: '/player-001/state' };
+
 test('accepts a valid HS256 token and maps sub/app onto req.auth', async () => {
-  const token = await signToken(
-    { [String(process.env.JWT_APP_CLAIM ?? 'app')]: APP },
-    'player-001',
-  );
+  const token = await signToken({ [APP_CLAIM]: APP }, 'player-001');
   const { err, req } = await runMiddleware(token);
 
   assert.equal(err, undefined);
@@ -83,4 +94,30 @@ test('rejects a token missing the app claim (401)', async () => {
 
   assert.equal((err as { status?: number }).status, 401);
   assert.equal(req.auth, undefined);
+});
+
+test('allows a request whose path matches the token whitelist', async () => {
+  const token = await signToken({ [APP_CLAIM]: APP, whitelist: ['/v1/memcard/*'] }, 'player-001');
+  const { err, req } = await runMiddleware(token, MEMCARD_ROUTE);
+
+  assert.equal(err, undefined);
+  assert.deepEqual(req.auth, { userId: 'player-001', app: APP });
+});
+
+test('rejects a request whose path is not in the token whitelist (403)', async () => {
+  const token = await signToken({ [APP_CLAIM]: APP, whitelist: ['/nexus/data'] }, 'player-001');
+  const { err, req } = await runMiddleware(token, MEMCARD_ROUTE);
+
+  assert.equal((err as { status?: number }).status, 403);
+  assert.equal(req.auth, undefined);
+});
+
+test('rejects a request whose path is blacklisted, even if whitelisted (403)', async () => {
+  const token = await signToken(
+    { [APP_CLAIM]: APP, whitelist: ['/v1/memcard/*'], blacklist: ['/v1/memcard/*'] },
+    'player-001',
+  );
+  const { err } = await runMiddleware(token, MEMCARD_ROUTE);
+
+  assert.equal((err as { status?: number }).status, 403);
 });

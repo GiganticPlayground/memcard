@@ -1,0 +1,7 @@
+# Fixing the app AND naming a claim to read it from is a configuration error.
+auth:
+  type: hs256
+  issuer: https://players.test
+  secret: ${env:TEST_PLAYER_SECRET}
+  app: snw-mobile
+  appClaim: tenant

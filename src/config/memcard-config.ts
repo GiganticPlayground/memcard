@@ -78,6 +78,9 @@ const jwtAuthFields = {
   requirements: z.array(rawRequirementSchema).optional().default([]),
   // Claim carrying the `{app}` key segment. Falls back to JWT_APP_CLAIM.
   appClaim: z.string().min(1).optional(),
+  // Fixed `{app}` key segment for every token this strategy verifies, for issuers
+  // that do not add an app claim. Mutually exclusive with `appClaim`.
+  app: z.string().min(1).optional(),
 };
 
 const rawJwksAuthSchema = z.object({
@@ -150,8 +153,10 @@ export interface CompiledAuthStrategy {
   options: AuthStrategyOptions;
   /** Issuer of the tokens this strategy verifies — absent for `static`. */
   issuer?: string;
-  /** Claim carrying the app namespace — absent for `static`. */
+  /** Claim carrying the app namespace — absent for `static`, or when `app` is fixed. */
   appClaim?: string;
+  /** App namespace fixed by the config, used instead of reading a claim. */
+  app?: string;
   /** Whether this strategy may reach the admin routes. */
   admin: boolean;
 }
@@ -245,6 +250,40 @@ function compilePaths(raw: RawPaths | undefined): AuthPaths | undefined {
   return paths;
 }
 
+/**
+ * `{app}` fixed by the config rather than read from the token.
+ *
+ * The value becomes a segment of the S3 object key, so it is held to the same
+ * shape the API enforces on the admin routes' `{app}` path parameter (the
+ * `KeySegment` schema): a bad value here would not fail, it would quietly write
+ * every player of this strategy somewhere unintended.
+ */
+const APP_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+function compileFixedApp(
+  rawApp: string | undefined,
+  rawAppClaim: string | undefined,
+  ctx: string,
+): string | undefined {
+  if (rawApp === undefined) return undefined;
+
+  if (rawAppClaim !== undefined) {
+    throw new Error(
+      `${ctx}: "app" and "appClaim" are mutually exclusive — "app" fixes the {app} key segment ` +
+        `for every token this strategy verifies, "appClaim" reads it from the token`,
+    );
+  }
+
+  const app = resolvePlaceholders(rawApp, `${ctx}.app`).trim();
+  if (!app || app === '.' || app === '..' || !APP_SEGMENT_PATTERN.test(app)) {
+    throw new Error(
+      `${ctx}.app must be a single key segment of letters, digits, '.', '_' or '-' ` +
+        `(and not '.' or '..') — got "${app}"`,
+    );
+  }
+  return app;
+}
+
 function compileStrategy(raw: RawAuth, ctx: string, defaultAppClaim: string): CompiledAuthStrategy {
   const paths = compilePaths(raw.paths);
 
@@ -273,6 +312,7 @@ function compileStrategy(raw: RawAuth, ctx: string, defaultAppClaim: string): Co
 
   const issuer = resolvePlaceholders(raw.issuer, `${ctx}.issuer`);
   const audience = raw.audience ? resolvePlaceholders(raw.audience, `${ctx}.audience`) : undefined;
+  const fixedApp = compileFixedApp(raw.app, raw.appClaim, ctx);
 
   const shared = {
     issuer,
@@ -299,7 +339,10 @@ function compileStrategy(raw: RawAuth, ctx: string, defaultAppClaim: string): Co
     label: `${ctx} (${raw.type}, issuer ${issuer})`,
     admin: raw.admin,
     issuer,
-    appClaim: raw.appClaim ?? defaultAppClaim,
+    // Either the app is fixed here or it is read from a claim, never both: silent
+    // precedence between the two would decide which S3 tree a player's state lands
+    // in, and getting that wrong reads as a brand-new player rather than an error.
+    ...(fixedApp !== undefined ? { app: fixedApp } : { appClaim: raw.appClaim ?? defaultAppClaim }),
     options,
   };
 }

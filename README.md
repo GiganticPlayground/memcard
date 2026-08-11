@@ -417,6 +417,7 @@ Types are `jwks` (RS256 against a JWKS endpoint), `hs256` (shared secret), and
 | `paths` | Path allow/deny rules — inline `whitelist`/`blacklist`, or `whitelistClaim`/`blacklistClaim` to read them from the token |
 | `requirements` | Claim checks applied after verification, e.g. `{ type: scope, value: memcard:admin }` _(JWT types only)_ |
 | `appClaim` | Claim supplying the `{app}` key segment, overriding `JWT_APP_CLAIM` for this strategy _(JWT types only)_ |
+| `app` | The `{app}` key segment itself, fixed by the config instead of read from a claim — for an issuer whose tokens carry no app. Mutually exclusive with `appClaim` _(JWT types only)_ |
 
 Four things are worth knowing before writing one:
 
@@ -427,6 +428,11 @@ Four things are worth knowing before writing one:
 - **An inline list replaces the matching claim.** Setting `whitelist` means
   `whitelistClaim` is ignored for that strategy — inline rules are the deployment's,
   claim rules are the token's, and one strategy cannot use both on the same side.
+- **`app` and `appClaim` are mutually exclusive.** They are two sources for one
+  value — the config or the token — and a precedence rule between them would silently
+  decide which tree a player's state lands in. Naming both is rejected at startup. A
+  fixed `app` also holds to the same shape the API enforces on the admin routes'
+  `{app}` parameter, since it becomes a segment of the object key.
 - **A `static` strategy must set `admin: true`.** It carries no claims, so it can
   never name a player; on the player routes it would be authenticating a caller
   Memcard cannot identify. The compiler rejects the combination outright.

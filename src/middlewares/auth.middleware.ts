@@ -77,7 +77,10 @@ function attachIdentity(
 ): void {
   const appClaimName = strategy.appClaim;
   const userId = payload.sub;
-  const app = appClaimName ? payload[appClaimName] : undefined;
+  // A strategy either fixes the app in the config or names the claim to read it
+  // from — the compiler rejects both — so this is a choice of source, not a
+  // precedence rule. A fixed app is for issuers that do not add an app claim.
+  const app = strategy.app ?? (appClaimName ? payload[appClaimName] : undefined);
 
   const hasUserId = typeof userId === 'string' && userId.length > 0;
   const hasApp = typeof app === 'string' && app.length > 0;

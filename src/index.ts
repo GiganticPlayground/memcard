@@ -16,13 +16,19 @@ import {
   requestContextMiddleware,
 } from './middlewares/index';
 import { buildStateKey } from './services/memcard.service';
-import { buildAnalytics, logger } from './utils/index';
+import { applyWriteMethods, buildAnalytics, logger } from './utils/index';
 import { setupShutdown } from './utils/shutdown';
 
-// Load OpenAPI specification
+// Load OpenAPI specification. The document is the router: it is handed to the
+// validator in memory (not by path) so MEMCARD_WRITE_METHODS can add the POST
+// twin of each write operation — and to Swagger UI, so the docs show exactly
+// what this deployment accepts.
 export const apiSpecPath: string = join(process.cwd(), 'api/openapi.yaml');
 const apiSpecContent: string = readFileSync(apiSpecPath, 'utf8');
-const apiSpec: swaggerUi.JsonObject = YAML.parse(apiSpecContent) as swaggerUi.JsonObject;
+const apiSpec: swaggerUi.JsonObject = applyWriteMethods(
+  YAML.parse(apiSpecContent),
+  config.MEMCARD_WRITE_METHODS,
+) as swaggerUi.JsonObject;
 
 const app = express();
 app.set('trust proxy', config.TRUST_PROXY);
@@ -67,7 +73,7 @@ if (config.RATE_LIMIT_ENABLED) {
 // JWT verification guards all Memcard routes before any S3 access.
 app.use('/v1/memcard', authMiddleware);
 
-app.use(createOpenApiValidatorMiddleware(apiSpecPath));
+app.use(createOpenApiValidatorMiddleware(apiSpec));
 app.use(errorHandlerMiddleware);
 
 const server = app.listen(config.PORT, () => {
@@ -77,6 +83,9 @@ const server = app.listen(config.PORT, () => {
   // brand-new player — so this line is what makes a misconfiguration visible.
   logger.info(
     `State objects: s3://${config.MEMCARD_S3_BUCKET}/${buildStateKey('{app}', '{userId}')}`,
+  );
+  logger.info(
+    `State writes accept: ${config.MEMCARD_WRITE_METHODS.map((method) => method.toUpperCase()).join(', ')}`,
   );
 });
 

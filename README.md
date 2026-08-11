@@ -228,6 +228,13 @@ Content-Type: application/json
 Memcard translates into a create-only `If-None-Match: *` write. On a `409`, re-fetch
 with `GET` before surfacing a conflict to the user.
 
+**POST instead of PUT.** Some client stacks and intermediaries cannot send a PUT.
+`MEMCARD_WRITE_METHODS` decides which method(s) the two write routes answer on —
+`put` (the default), `post`, or `put,post` to accept both. The request and the
+responses are identical either way, `If-Match` included; only the verb changes. A
+method the deployment does not list returns `405`, and `/api-docs` shows whichever
+is enabled.
+
 ### `GET|PUT /v1/memcard/admin/{app}/{userId}/state`
 
 Same semantics as the two routes above — same headers, same status codes — except
@@ -346,6 +353,7 @@ still take their secrets from the environment.
 | `MEMCARD_ENV` | _required_ | `{env}` segment of the S3 key; free-form, normalized and validated like the prefix |
 | `MEMCARD_KEY_PREFIX` | `memcard` | Key prefix owning Memcard's tree in the bucket; may be multi-level, may not be empty |
 | `MEMCARD_MAX_BODY_BYTES` | `2097152` | Max PUT body size before `413` |
+| `MEMCARD_WRITE_METHODS` | `put` | Method(s) state writes answer on: `put`, `post`, or `put,post`. Any method not listed returns `405` |
 | `MEMCARD_SENTINEL_ETAG` | `0` | Sentinel ETag for first-write bootstrap |
 | `MEMCARD_SCHEMA_VERSION` | `1` | `schemaVersion` written into the stored envelope |
 | `MEMCARD_S3_TIMEOUT_MS` | `5000` | Per-request S3 timeout (→ `503` on timeout) |

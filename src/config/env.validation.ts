@@ -132,6 +132,25 @@ export const envSchema = z
       .pipe(z.number().int().positive())
       .optional()
       .default(2_097_152),
+    // Method(s) the state-write operations answer on: `put` (the default),
+    // `post`, or both (`put,post`). Applied to the OpenAPI document at startup
+    // — see `applyWriteMethods` — because routing is spec-driven.
+    MEMCARD_WRITE_METHODS: z
+      .string()
+      .optional()
+      .default('put')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((method) => method.trim().toLowerCase())
+          .filter((method) => method.length > 0),
+      )
+      .pipe(
+        z.array(z.enum(['put', 'post'])).min(1, {
+          error: "MEMCARD_WRITE_METHODS must list at least one of 'put', 'post'",
+        }),
+      )
+      .transform((methods) => [...new Set(methods)]),
     MEMCARD_SENTINEL_ETAG: z.string().min(1).optional().default('0'),
     MEMCARD_SCHEMA_VERSION: z
       .string()

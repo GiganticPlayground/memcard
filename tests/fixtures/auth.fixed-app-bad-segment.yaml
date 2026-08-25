@@ -1,0 +1,6 @@
+# The fixed app lands in the S3 object key, so key structure is rejected.
+auth:
+  type: hs256
+  issuer: https://players.test
+  secret: ${env:TEST_PLAYER_SECRET}
+  app: snw/mobile

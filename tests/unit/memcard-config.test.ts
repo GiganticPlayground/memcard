@@ -22,6 +22,7 @@ before(() => {
   process.env.TEST_INTERNAL_SECRET = 'internal-secret';
   process.env.TEST_STATIC_TOKEN = 'static-token';
   process.env.TEST_ISSUER_HOST = 'issuer.test';
+  process.env.TEST_FIXED_APP = 'fixed-from-env';
 });
 
 /** The deployment's JWT_APP_CLAIM, which a strategy naming none falls back to. */
@@ -57,6 +58,23 @@ describe('compileAuthConfigFile', () => {
 
     assert.equal(player?.appClaim, 'app');
     assert.equal(internal?.appClaim, 'tenant');
+  });
+
+  it('fixes the app from the config, leaving no claim to read', () => {
+    const [player, internal] = compile('fixed-app');
+
+    assert.equal(player?.app, 'snw-mobile');
+    assert.equal(player?.appClaim, undefined);
+    // Placeholders work here too, so the app can come from the deployment's env.
+    assert.equal(internal?.app, 'fixed-from-env');
+  });
+
+  it('rejects a strategy that both fixes the app and names a claim', () => {
+    assert.throws(() => compile('fixed-app-and-claim'), /mutually exclusive/);
+  });
+
+  it('rejects a fixed app that would inject key structure', () => {
+    assert.throws(() => compile('fixed-app-bad-segment'), /must be a single key segment/);
   });
 
   it('passes the path rules through to the strategy options', () => {

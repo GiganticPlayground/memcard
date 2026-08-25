@@ -28,6 +28,15 @@ auth:
     issuer: ${env:JWT_ISSUER}
     jwks_url: ${env:JWKS_URI}
     # audience: memcard
+    #
+    # Where the `{app}` key segment comes from. `appClaim` reads it from the token
+    # (the default, JWT_APP_CLAIM); `app` fixes it here instead, for an issuer that
+    # does not put an app in its tokens. Set one or the other — both is an error,
+    # since which one won would decide where a player's state is stored.
+    #
+    #   appClaim: app
+    #   app: snw-mobile
+    #   app: ${env:MEMCARD_APP}
     paths:
       whitelistClaim: whitelist
       blacklistClaim: blacklist

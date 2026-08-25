@@ -1,0 +1,11 @@
+# An issuer that does not add an app claim: the {app} key segment is fixed here
+# instead, so every token it verifies resolves to the same app.
+auth:
+  - type: hs256
+    issuer: https://players.test
+    secret: ${env:TEST_PLAYER_SECRET}
+    app: snw-mobile
+  - type: hs256
+    issuer: https://tools.test
+    secret: ${env:TEST_INTERNAL_SECRET}
+    app: ${env:TEST_FIXED_APP}
